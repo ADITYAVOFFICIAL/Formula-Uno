@@ -1,31 +1,20 @@
 {
-  "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "main.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxLambdaSize": "50mb",
-        "runtime": "python3.12"
-      }
+      "source": "/(.*)",
+      "destination": "/main.py"
     }
   ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "main.py"
-    }
-  ],
-  "env": {
-    "LOG_LEVEL": "INFO",
-    "CACHE_DIR": "/tmp/f1_cache",
-    "PYTHONDONTWRITEBYTECODE": "1"
-  },
   "functions": {
     "main.py": {
+      "runtime": "python3.12",
       "maxDuration": 60,
       "memory": 3008
     }
   },
-  "installCommand": "pip install --no-cache-dir -r requirements.txt"
+  "env": {
+    "LOG_LEVEL": "INFO",
+    "CACHE_DIR": "/tmp/f1_cache",
+    "PYTHONDONTWRITEBYTECODE": "1"
+  }
 }
