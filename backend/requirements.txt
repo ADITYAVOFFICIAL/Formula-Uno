@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+fastf1
+pandas
+numpy
+pydantic-settings
+starlette
+uvicorn[standard]
+typing-extensions
