@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { motion } from "framer-motion";
 import { Trophy, AlertTriangle } from "lucide-react";
+import { TeamLogo, DriverPhoto } from "@/components/ImageComponents";
 
 // --- Configuration ---
 const API_BASE_URL = "http://127.0.0.1:8000";
@@ -95,6 +96,11 @@ const StandingsTableSkeleton = () => (
 
 
 const Standings = () => {
+  // Scroll to top when component loads
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   // Fetch driver standings directly
   const { 
     data: driverStandings, 
@@ -132,21 +138,34 @@ const Standings = () => {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {driverStandings?.map((driver) => (
-            <TableRow key={driver.driverId}>
+          {driverStandings?.slice(0, 20).map((driver) => (
+            <TableRow key={driver.driverId} className="hover:bg-accent/50 transition-colors">
               <TableCell className="text-center font-bold text-xl">{driver.position}</TableCell>
               <TableCell>
                 <Link to={`/driver/${driver.driverId}`} className="flex items-center gap-3 group">
+                  <DriverPhoto 
+                    driverId={driver.driverId}
+                    driverName={`${driver.givenName} ${driver.familyName}`}
+                    useHeadshot={true}
+                    size="sm"
+                    className="shrink-0"
+                  />
                   <div 
-                    className="w-1 h-6 rounded-full" 
+                    className="w-1 h-6 rounded-full shrink-0" 
                     style={{ backgroundColor: `hsl(${teamColorMapping[driver.constructorNames[0]]})` }}
                   ></div>
                   <span className="font-medium group-hover:text-primary transition-colors">{`${driver.givenName} ${driver.familyName}`}</span>
                 </Link>
               </TableCell>
               <TableCell className="hidden md:table-cell">
-                <Link to={`/team/${driver.constructorIds[0]}`} className="hover:underline">
-                  {driver.constructorNames[0]}
+                <Link to={`/team/${driver.constructorIds[0]}`} className="flex items-center gap-2 hover:underline group">
+                  <TeamLogo 
+                    constructorId={driver.constructorIds[0]}
+                    constructorName={driver.constructorNames[0]}
+                    size="sm"
+                    className="shrink-0"
+                  />
+                  <span className="group-hover:text-primary transition-colors">{driver.constructorNames[0]}</span>
                 </Link>
               </TableCell>
               <TableCell className="text-right font-black text-lg text-primary">{driver.points}</TableCell>
@@ -172,12 +191,18 @@ const Standings = () => {
         </TableHeader>
         <TableBody>
           {constructorStandings?.map((team) => (
-            <TableRow key={team.constructorId}>
+            <TableRow key={team.constructorId} className="hover:bg-accent/50 transition-colors">
               <TableCell className="text-center font-bold text-xl">{team.position}</TableCell>
               <TableCell>
                 <Link to={`/team/${team.constructorId}`} className="flex items-center gap-3 group">
+                  <TeamLogo 
+                    constructorId={team.constructorId}
+                    constructorName={team.constructorName}
+                    size="sm"
+                    className="shrink-0"
+                  />
                   <div 
-                    className="w-1 h-6 rounded-full" 
+                    className="w-1 h-6 rounded-full shrink-0" 
                     style={{ backgroundColor: `hsl(${teamColorMapping[team.constructorName]})` }}
                   ></div>
                   <span className="font-medium group-hover:text-primary transition-colors">{team.constructorName}</span>

@@ -1,6 +1,8 @@
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Calendar, Flag, Globe } from "lucide-react";
 import { motion } from "framer-motion";
@@ -68,6 +70,11 @@ const CircuitProfileSkeleton = () => (
 
 const CircuitProfile = () => {
   const { circuitName } = useParams<{ circuitName: string }>();
+
+  // Scroll to top when component loads or circuitName changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [circuitName]);
 
   const { data: schedule, isLoading, isError } = useQuery<ScheduleEvent[]>({
     queryKey: ["schedule", LATEST_YEAR],

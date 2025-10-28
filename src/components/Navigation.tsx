@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Home, Menu, Users, Trophy, UserRound } from "lucide-react";
+import { Home, Menu, Users, Trophy, UserRound, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { motion } from "framer-motion";
@@ -16,6 +16,7 @@ const Navigation = () => {
     { path: "/teams", label: "Teams", icon: Users },
     { path: "/drivers", label: "Drivers", icon: UserRound },
     { path: "/standings", label: "Standings", icon: Trophy },
+    { path: "/predictions", label: "Predictions", icon: Brain },
   ];
 
   const isActive = (path) => {

@@ -1,11 +1,14 @@
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Trophy, Users, Flag, BarChart2, PieChart as PieIcon, TrendingUp, Target, Award, Zap } from "lucide-react";
+import { TeamLogo, DriverPhoto } from "@/components/ImageComponents";
+import { getCountryFlag } from "@/lib/images";
 import {
   BarChart,
   Bar,
@@ -33,7 +36,7 @@ import {
 const API_BASE_URL = "http://127.0.0.1:8000";
 const LATEST_YEAR = new Date().getFullYear(); // Dynamic current year
 const HISTORICAL_YEARS_RANGE = 30; // Maximum number of years to look back
-const HISTORICAL_YEARS = Array.from(
+const HISTORICAL_YEARS = Array.from(  
   { length: HISTORICAL_YEARS_RANGE }, 
   (_, i) => LATEST_YEAR - (HISTORICAL_YEARS_RANGE - 1) + i
 ); // Generates array of years to check
@@ -193,6 +196,11 @@ const TeamProfileSkeleton = () => (
 const TeamProfile = () => {
   const { teamId } = useParams<{ teamId: string }>();
 
+  // Scroll to top when component loads or teamId changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [teamId]);
+
   const { data: teams, isLoading: isLoadingTeams } = useQuery<ConstructorStanding[]>({
     queryKey: ["constructorStandings", LATEST_YEAR],
     queryFn: () => fetchConstructorStandings(LATEST_YEAR),
@@ -224,7 +232,11 @@ const TeamProfile = () => {
   const allHistoricalLoading = historicalQueries.some((q) => q.isLoading);
 
   const team = teams?.find((t) => t.constructorId === teamId);
-  const teamDrivers = drivers?.filter((d) => d.constructorIds.includes(teamId!)) || [];
+  // Filter for CURRENT drivers only (last constructor in their constructorIds array)
+  const teamDrivers = drivers?.filter((d) => {
+    const currentTeamId = d.constructorIds[d.constructorIds.length - 1];
+    return currentTeamId === teamId;
+  }) || [];
 
   if (isLoadingTeams || isLoadingDrivers || allHistoricalLoading) {
     return <TeamProfileSkeleton />;
@@ -356,6 +368,19 @@ const TeamProfile = () => {
           </div>
 
           <div className="max-w-5xl mx-auto text-center">
+            {/* Team Logo */}
+            <div className="flex justify-center mb-8">
+              <div className="relative group">
+                <div className="absolute inset-0 bg-white/20 rounded-3xl blur-2xl group-hover:blur-3xl transition-all duration-500" />
+                <TeamLogo 
+                  constructorId={team.constructorId}
+                  constructorName={team.constructorName}
+                  size="xl"
+                  className="relative w-48 h-48 border-8 border-white/20 shadow-2xl ring-4 ring-white/10 group-hover:scale-105 transition-transform duration-500"
+                />
+              </div>
+            </div>
+
             <h1 className="text-5xl md:text-8xl font-black text-white tracking-tighter mb-4">
               {team.constructorName}
             </h1>
@@ -363,11 +388,46 @@ const TeamProfile = () => {
               {team.constructorNationality}
             </p>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-12">
                 <StatCard label="Points" value={team.points} />
                 <StatCard label="Wins" value={team.wins} />
                 <StatCard label="Position" value={`P${team.position}`} />
                 <StatCard label="Drivers" value={teamDrivers.length} />
+            </div>
+
+            {/* Team Drivers */}
+            <div className="flex flex-wrap justify-center gap-8">
+              {teamDrivers.map(driver => (
+                <Link 
+                  key={driver.driverId}
+                  to={`/driver/${driver.driverId}`}
+                  className="group"
+                >
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="relative">
+                      <DriverPhoto 
+                        driverId={driver.driverId}
+                        driverName={`${driver.givenName} ${driver.familyName}`}
+                        size="lg"
+                        useHeadshot={true}
+                        className="border-4 border-white/30 group-hover:border-white/60 shadow-xl group-hover:scale-110 transition-all duration-300"
+                      />
+                      <div 
+                        className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full flex items-center justify-center text-sm font-black text-white shadow-lg border-2 border-white/30"
+                        style={{ backgroundColor: `hsl(${teamColor})` }}
+                      >
+                        #{driver.driverNumber}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-white font-bold text-lg group-hover:text-primary transition-colors">
+                        {driver.givenName} {driver.familyName}
+                      </p>
+                      <p className="text-white/70 text-sm">{driver.points} pts</p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
             </div>
           </div>
         </div>
@@ -471,7 +531,12 @@ const TeamProfile = () => {
                       <CardContent className="p-0 flex items-center">
                         <div className="p-6 flex-grow">
                           <h3 className="text-3xl font-bold">{`${driver.givenName} ${driver.familyName}`}</h3>
-                          <p className="text-muted-foreground">{driver.driverNationality}</p>
+                          <p className="text-muted-foreground flex items-center gap-2">
+                            <span className="text-lg not-italic" style={{ fontFamily: 'system-ui, -apple-system, "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"' }}>
+                              {getCountryFlag(driver.driverNationality)}
+                            </span>
+                            {driver.driverNationality}
+                          </p>
                           <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
                             <div><p className="font-bold text-xl">{driver.points}</p><p className="text-muted-foreground">Points</p></div>
                             <div><p className="font-bold text-xl">{driver.wins}</p><p className="text-muted-foreground">Wins</p></div>

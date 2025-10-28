@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRight, Trophy, Users, Flag, AlertTriangle, UserRound } from "lucide-react";
 import { motion } from "framer-motion";
+import { TeamLogo, DriverPhoto } from "@/components/ImageComponents";
 
 // --- Configuration ---
 const API_BASE_URL = "http://127.0.0.1:8000";
@@ -84,6 +86,11 @@ const TeamCardSkeleton = () => (
 );
 
 const Teams = () => {
+  // Scroll to top when component loads
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   const { data: teams, isLoading: isLoadingTeams, isError: isErrorTeams, error: errorTeams } = useQuery<ConstructorStanding[]>({
     queryKey: ["constructorStandings", LATEST_YEAR],
     queryFn: () => fetchConstructorStandings(LATEST_YEAR),
@@ -143,7 +150,12 @@ const Teams = () => {
       <section className="container mx-auto px-4 pb-24">
         <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
           {teams?.map((team, index) => {
-            const teamDrivers = drivers?.filter(d => d.constructorIds.includes(team.constructorId)) || [];
+            // Filter for CURRENT drivers only (last constructor in their constructorIds array)
+            // Limit to 2 drivers per team (current lineup)
+            const teamDrivers = drivers?.filter(d => {
+              const currentTeamId = d.constructorIds[d.constructorIds.length - 1];
+              return currentTeamId === team.constructorId;
+            }).slice(0, 2) || [];
             const teamColor = teamColorMapping[team.constructorName] || 'var(--primary)';
             
             return (
@@ -159,9 +171,17 @@ const Teams = () => {
                     className="p-0 border-b-4"
                     style={{ borderColor: `hsl(${teamColor})` }}
                   >
-                    <div className="p-6 bg-card/50">
-                      <CardTitle className="text-2xl font-bold">{team.constructorName}</CardTitle>
-                      <p className="text-sm text-muted-foreground">{team.constructorNationality}</p>
+                    <div className="p-6 bg-card/50 flex items-center gap-4">
+                      <TeamLogo 
+                        constructorId={team.constructorId} 
+                        constructorName={team.constructorName}
+                        size="lg"
+                        className="shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-2xl font-bold truncate">{team.constructorName}</CardTitle>
+                        <p className="text-sm text-muted-foreground">{team.constructorNationality}</p>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="p-6 space-y-4 flex-grow">
@@ -170,9 +190,16 @@ const Teams = () => {
                       <div className="space-y-2">
                         {teamDrivers.map(driver => (
                           <Link to={`/driver/${driver.driverId}`} key={driver.driverId} className="block">
-                            <div className="flex items-center justify-between p-2 rounded-md hover:bg-accent transition-colors">
-                              <span className="font-medium">{`${driver.givenName} ${driver.familyName}`}</span>
-                              <span className="text-xs font-bold" style={{color: `hsl(${teamColor})`}}>#{driver.driverNumber}</span>
+                            <div className="flex items-center gap-3 p-2 rounded-md hover:bg-accent transition-colors">
+                              <DriverPhoto 
+                                driverId={driver.driverId}
+                                driverName={`${driver.givenName} ${driver.familyName}`}
+                                size="sm"
+                                useHeadshot={true}
+                                className="shrink-0"
+                              />
+                              <span className="font-medium flex-1">{`${driver.givenName} ${driver.familyName}`}</span>
+                              <span className="text-xs font-bold shrink-0" style={{color: `hsl(${teamColor})`}}>#{driver.driverNumber}</span>
                             </div>
                           </Link>
                         ))}

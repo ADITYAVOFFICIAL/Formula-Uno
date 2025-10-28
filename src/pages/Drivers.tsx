@@ -1,11 +1,14 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRight, AlertTriangle } from "lucide-react";
 import { motion } from "framer-motion";
+import { DriverCardImage, TeamLogo } from "@/components/ImageComponents";
+import { getCountryFlag } from "@/lib/images";
 
 // --- Configuration ---
 const API_BASE_URL = "http://127.0.0.1:8000";
@@ -80,6 +83,11 @@ const DriverCardSkeleton = () => (
 
 
 const Drivers = () => {
+  // Scroll to top when component loads
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   // Fetch the complete driver standings for the year
   const { data: drivers, isLoading, isError, error } = useQuery<DriverStanding[]>({
     queryKey: ["driverStandings", LATEST_YEAR],
@@ -113,7 +121,7 @@ const Drivers = () => {
 
     return (
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {drivers?.map((driver, index) => {
+        {drivers?.slice(0, 20).map((driver, index) => {
           const teamName = driver.constructorNames[0] || 'N/A';
           const teamColor = teamColorMapping[teamName] || 'var(--foreground)';
 
@@ -126,20 +134,40 @@ const Drivers = () => {
               transition={{ duration: 0.5, delay: index * 0.05 }}
             >
               <Card className="overflow-hidden border-2 border-border/50 hover:border-primary transition-all duration-300 group rounded-2xl h-full flex flex-col shadow-lg hover:shadow-primary/20">
-                <CardContent className="p-6 flex-grow">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="text-sm text-muted-foreground">{driver.driverNationality}</p>
-                      <h3 className="text-2xl font-bold">{`${driver.givenName} ${driver.familyName}`}</h3>
-                    </div>
-                    <div 
-                      className="text-5xl font-black opacity-70"
-                      style={{ color: `hsl(${teamColor})` }}
-                    >
-                      {driver.driverNumber}
-                    </div>
+                {/* Driver Image */}
+                <div className="relative h-48 overflow-hidden" style={{ backgroundColor: `hsl(${teamColor}, 20%, 15%)` }}>
+                  <DriverCardImage 
+                    driverId={driver.driverId}
+                    driverName={`${driver.givenName} ${driver.familyName}`}
+                    className="group-hover:scale-110 transition-transform duration-300"
+                  />
+                  <div 
+                    className="absolute top-2 right-2 text-6xl font-black opacity-20"
+                    style={{ color: `hsl(${teamColor})` }}
+                  >
+                    {driver.driverNumber}
                   </div>
-                  <p className="text-sm font-semibold mt-1" style={{ color: `hsl(${teamColor})` }}>
+                </div>
+                
+                <CardContent className="p-6 flex-grow">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                        <span className="text-sm not-italic" style={{ fontFamily: 'system-ui, -apple-system, "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"' }}>
+                          {getCountryFlag(driver.driverNationality)}
+                        </span>
+                        {driver.driverNationality}
+                      </p>
+                      <h3 className="text-xl font-bold leading-tight">{`${driver.givenName} ${driver.familyName}`}</h3>
+                    </div>
+                    <TeamLogo 
+                      constructorId={driver.constructorIds[driver.constructorIds.length - 1]}
+                      constructorName={teamName}
+                      size="sm"
+                      className="flex-shrink-0 ml-2"
+                    />
+                  </div>
+                  <p className="text-sm font-semibold" style={{ color: `hsl(${teamColor})` }}>
                     {teamName}
                   </p>
                 </CardContent>
