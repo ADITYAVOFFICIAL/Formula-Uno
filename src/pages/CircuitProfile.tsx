@@ -1,232 +1,200 @@
 import { useParams, Link } from "react-router-dom";
-import { circuitData, Circuit } from "@/data/circuitData";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { MapPin, Calendar, Trophy, Zap, Timer, Navigation, Flag } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from "recharts";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MapPin, Calendar, Flag, Globe } from "lucide-react";
+import { motion } from "framer-motion";
+
+// --- Configuration ---
+const API_BASE_URL = "http://127.0.0.1:8000";
+const LATEST_YEAR = 2025;
+
+// --- Type Definition for API Data ---
+interface ScheduleEvent {
+  RoundNumber: number;
+  Country: string;
+  Location: string;
+  EventName: string;
+  EventDate: string;
+  Session1Date: string;
+  Session2Date: string;
+  Session3Date: string;
+  Session4Date: string;
+  Session5Date: string; // Race Date
+}
+
+// --- API Fetching Function ---
+const fetchSchedule = async (year: number): Promise<ScheduleEvent[]> => {
+  const response = await fetch(`${API_BASE_URL}/schedule/${year}`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch the F1 schedule");
+  }
+  return response.json();
+};
+
+// --- Loading Skeleton Component ---
+const CircuitProfileSkeleton = () => (
+    <div className="min-h-screen bg-background py-8 px-4 md:px-8">
+        <div className="f1-gradient-card rounded-2xl p-6 md:p-12 mb-8">
+            <Skeleton className="h-6 w-32 mb-4" />
+            <Skeleton className="h-16 w-3/4 mb-4" />
+            <div className="flex flex-wrap gap-4">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-6 w-40" />
+            </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+                <CardHeader>
+                    <Skeleton className="h-8 w-1/2" />
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <Skeleton className="h-6 w-full" />
+                    <Skeleton className="h-6 w-full" />
+                    <Skeleton className="h-6 w-3/4" />
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <Skeleton className="h-8 w-1/2" />
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <Skeleton className="h-24 w-full" />
+                </CardContent>
+            </Card>
+        </div>
+    </div>
+);
 
 const CircuitProfile = () => {
   const { circuitName } = useParams<{ circuitName: string }>();
-  const circuit = circuitData.find(
-    (c) => c.name.toLowerCase().replace(/\s+/g, "-") === circuitName
+
+  const { data: schedule, isLoading, isError } = useQuery<ScheduleEvent[]>({
+    queryKey: ["schedule", LATEST_YEAR],
+    queryFn: () => fetchSchedule(LATEST_YEAR),
+  });
+
+  // Find the circuit from the schedule based on the URL parameter
+  const circuit = schedule?.find(
+    (c) => c.Location.toLowerCase().replace(/\s+/g, "-") === circuitName
   );
 
-  if (!circuit) {
+  if (isLoading) {
+    return <CircuitProfileSkeleton />;
+  }
+
+  if (isError || !circuit) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <p className="text-center text-muted-foreground">Circuit not found</p>
-            <Link to="/analytics" className="block text-center mt-4 text-primary hover:underline">
-              Back to Analytics
-            </Link>
+        <Card className="w-full max-w-md text-center">
+          <CardHeader>
+            <CardTitle>Circuit Not Found</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">
+              The circuit "{circuitName}" could not be found in the {LATEST_YEAR} schedule.
+            </p>
+            <Button asChild className="mt-6">
+              <Link to="/analytics">Back to Analytics</Link>
+            </Button>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // Mock lap time distribution data
-  const lapTimeData = [
-    { range: "1:15-1:20", laps: 120 },
-    { range: "1:20-1:25", laps: 280 },
-    { range: "1:25-1:30", laps: 420 },
-    { range: "1:30-1:35", laps: 350 },
-    { range: "1:35-1:40", laps: 180 },
-    { range: "1:40+", laps: 90 },
-  ];
-
-  // Track type distribution
-  const trackTypeData = [
-    { name: "Straights", value: 35 },
-    { name: "Fast Corners", value: 25 },
-    { name: "Medium Corners", value: 20 },
-    { name: "Slow Corners", value: 20 },
-  ];
-
-  const COLORS = ["hsl(var(--primary))", "hsl(var(--secondary))", "hsl(var(--accent))", "hsl(var(--muted))"];
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString(undefined, {
+        year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+  }
 
   return (
     <div className="min-h-screen bg-background py-8 px-4 md:px-8">
       {/* Hero Section */}
-      <div className="f1-gradient-card rounded-2xl p-6 md:p-12 mb-8">
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+        className="f1-gradient-card rounded-2xl p-6 md:p-12 mb-8"
+      >
         <Link to="/analytics" className="text-sm text-white/80 hover:text-white mb-4 inline-block">
           ← Back to Analytics
         </Link>
-        <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">{circuit.name}</h1>
-        <div className="flex flex-wrap gap-4 text-white/90">
+        <h1 className="text-4xl md:text-6xl font-bold text-white mb-2">{circuit.EventName}</h1>
+        <p className="text-xl md:text-2xl text-white/80 mb-6">{circuit.Location}</p>
+        <div className="flex flex-wrap gap-x-6 gap-y-3 text-white/90">
           <div className="flex items-center gap-2">
-            <MapPin className="w-5 h-5" />
-            <span>{circuit.city}, {circuit.country}</span>
+            <Globe className="w-5 h-5" />
+            <span>{circuit.Country}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Flag className="w-5 h-5" />
+            <span>Round {circuit.RoundNumber}</span>
           </div>
           <div className="flex items-center gap-2">
             <Calendar className="w-5 h-5" />
-            <span>First GP: {circuit.firstGrandPrix}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Trophy className="w-5 h-5" />
-            <span>{circuit.mostWins} ({circuit.mostWinsCount} wins)</span>
+            <span>Race Day: {formatDate(circuit.Session5Date)}</span>
           </div>
         </div>
-      </div>
-
-      {/* Quick Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Card className="hover:shadow-xl transition-all">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Track Length</p>
-                <p className="text-3xl font-bold">{circuit.length}km</p>
-              </div>
-              <Navigation className="w-10 h-10 text-primary opacity-20" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-xl transition-all">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Corners</p>
-                <p className="text-3xl font-bold">{circuit.corners}</p>
-              </div>
-              <Zap className="w-10 h-10 text-primary opacity-20" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-xl transition-all">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Race Laps</p>
-                <p className="text-3xl font-bold">{circuit.laps}</p>
-              </div>
-              <Flag className="w-10 h-10 text-primary opacity-20" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-xl transition-all">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">DRS Zones</p>
-                <p className="text-3xl font-bold">{circuit.drsZones}</p>
-              </div>
-              <Timer className="w-10 h-10 text-primary opacity-20" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      </motion.div>
 
       {/* Detailed Info Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.2 }}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+      >
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Trophy className="w-5 h-5" />
-              Lap Record
+              <Calendar className="w-5 h-5 text-primary" />
+              Event Schedule
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <p className="text-3xl font-bold text-primary">{circuit.lapRecord}</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {circuit.lapRecordHolder} ({circuit.lapRecordYear})
+          <CardContent className="space-y-3">
+            <div className="flex justify-between items-center p-2 rounded-md bg-muted/50">
+                <span className="font-medium">Practice 1</span>
+                <span className="text-sm text-muted-foreground">{formatDate(circuit.Session1Date)}</span>
+            </div>
+            <div className="flex justify-between items-center p-2 rounded-md bg-muted/50">
+                <span className="font-medium">Practice 2</span>
+                <span className="text-sm text-muted-foreground">{formatDate(circuit.Session2Date)}</span>
+            </div>
+            <div className="flex justify-between items-center p-2 rounded-md bg-muted/50">
+                <span className="font-medium">Practice 3</span>
+                <span className="text-sm text-muted-foreground">{formatDate(circuit.Session3Date)}</span>
+            </div>
+             <div className="flex justify-between items-center p-2 rounded-md bg-muted/50">
+                <span className="font-medium">Qualifying</span>
+                <span className="text-sm text-muted-foreground">{formatDate(circuit.Session4Date)}</span>
+            </div>
+             <div className="flex justify-between items-center p-2 rounded-md bg-primary/10">
+                <span className="font-bold text-primary">Race</span>
+                <span className="text-sm font-semibold text-primary">{formatDate(circuit.Session5Date)}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>About This Event</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground leading-relaxed">
+              The {circuit.EventName} takes place at the famous circuit in {circuit.Location}, {circuit.Country}. 
+              As round {circuit.RoundNumber} of the {LATEST_YEAR} FIA Formula One World Championship, it promises to be an exciting weekend of racing action.
+            </p>
+            <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+              <p className="text-sm font-medium mb-2">Note on Circuit Data:</p>
+              <p className="text-sm text-muted-foreground">
+                This page displays live event and schedule information from the API. Detailed encyclopedic stats like lap records or corner counts are not provided by this data source.
               </p>
             </div>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Race Distance</span>
-                <Badge variant="secondary">{circuit.raceDistance}km</Badge>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Track Type</span>
-                <Badge>{circuit.trackType}</Badge>
-              </div>
-            </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Circuit Features</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground leading-relaxed">{circuit.features}</p>
-            <div className="mt-4 p-4 bg-muted/50 rounded-lg">
-              <p className="text-sm font-medium mb-2">Quick Tips for Gamers:</p>
-              <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                <li>Focus on corner exit speed for best lap times</li>
-                <li>Use DRS zones ({circuit.drsZones} available) strategically</li>
-                <li>Watch for track limits at high-speed corners</li>
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Visualizations */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Lap Time Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={lapTimeData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="range" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="laps" fill="hsl(var(--primary))" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Track Composition</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={trackTypeData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {trackTypeData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+      </motion.div>
     </div>
   );
 };

@@ -10,6 +10,9 @@ import TeamProfile from "./pages/TeamProfile";
 import CircuitProfile from "./pages/CircuitProfile";
 import NotFound from "./pages/NotFound";
 import Navigation from "./components/Navigation";
+import Teams from "./pages/Teams";
+import Drivers from "./pages/Drivers";
+import Standings from "./pages/Standings"; // Import the new Standings page
 
 const queryClient = new QueryClient();
 
@@ -23,10 +26,12 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/analytics" element={<Analytics />} />
+          <Route path="/teams" element={<Teams />} />
+          <Route path="/drivers" element={<Drivers />} />
+          <Route path="/standings" element={<Standings />} /> {/* Add the new Standings route */}
           <Route path="/driver/:driverId" element={<DriverProfile />} />
           <Route path="/team/:teamId" element={<TeamProfile />} />
           <Route path="/circuit/:circuitName" element={<CircuitProfile />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

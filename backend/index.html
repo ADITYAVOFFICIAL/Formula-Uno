@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastF1 Data Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --primary-color: #e10600; /* F1 Red */
+            --secondary-color: #1e1e1e;
+            --text-color: #e0e0e0;
+            --border-color: #333333;
+            --error-color: #cf6679;
+        }
+
+        @import url('https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700&display=swap');
+
+        body {
+            font-family: 'Titillium Web', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        header {
+            text-align: center;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 10px;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            color: var(--text-color);
+        }
+        
+        header h1 span {
+            color: var(--primary-color);
+        }
+
+        .card {
+            background-color: var(--secondary-color);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border-color);
+        }
+        
+        .instructions {
+            margin-top: 0;
+            color: #b0b0b0;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            align-items: flex-end;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        input, select {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        
+        input:invalid {
+            border-color: var(--error-color);
+        }
+
+        .actions {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            background-color: var(--primary-color);
+            color: white;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s, opacity 0.3s;
+        }
+
+        button:hover:not(:disabled) {
+            background-color: #ff1912;
+        }
+        
+        button:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+        
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        #results-container {
+            margin-top: 20px;
+            min-height: 150px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .loader {
+            border: 5px solid #333;
+            border-top: 5px solid var(--primary-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            position: absolute;
+            top: calc(50% - 20px);
+            left: calc(50% - 20px);
+            display: none; /* Hidden by default */
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .message-box {
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 5px solid;
+            display: none; /* Hidden by default */
+        }
+        
+        .error-message {
+            color: var(--error-color);
+            background-color: rgba(207, 102, 121, 0.1);
+            border-color: var(--error-color);
+        }
+        
+        .welcome-message {
+            color: #b0b0b0;
+            text-align: center;
+            padding: 20px;
+            display: block;
+        }
+
+        .data-display {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        th {
+            background-color: #2a2a2a;
+            font-weight: 700;
+        }
+
+        tr:hover {
+            background-color: #2c2c2c;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>FastF1 <span>Data Dashboard</span></h1>
+        </header>
+
+        <main>
+            <div class="card">
+                <h2>Query Controls</h2>
+                <p class="instructions">Fill in the required fields below. Buttons will activate when you can fetch data.</p>
+                <div class="controls-grid">
+                    <div class="form-group">
+                        <label for="year">Year</label>
+                        <input type="number" id="year" placeholder="e.g., 2023" value="2023" min="1950" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="gp">Grand Prix</label>
+                        <input type="text" id="gp" placeholder="e.g., Monza" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="session">Session</label>
+                        <select id="session">
+                            <option value="R">Race</option>
+                            <option value="Q">Qualifying</option>
+                            <option value="FP1">FP1</option>
+                            <option value="FP2">FP2</option>
+                            <option value="FP3">FP3</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="driver">Driver (3-letter code)</label>
+                        <input type="text" id="driver" placeholder="e.g., VER" minlength="3" maxlength="3">
+                    </div>
+                </div>
+                <div class="actions">
+                    <button id="getScheduleBtn">Get Schedule</button>
+                    <button id="getResultsBtn">Get Results</button>
+                    <button id="getLapsBtn">Get Laps</button>
+                    <button id="getWeatherBtn">Get Weather</button>
+                    <button id="getMessagesBtn">Get Messages</button>
+                    <button id="getTelemetryBtn">Get Telemetry</button>
+                </div>
+            </div>
+
+            <div id="results-container" class="card">
+                <h2 id="results-title">Results</h2>
+                <div class="loader" id="loader"></div>
+                <div class="message-box error-message" id="errorMessage"></div>
+                <div class="data-display" id="dataDisplay">
+                    <p class="welcome-message">Welcome! Please select an action above to fetch F1 data.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const API_BASE_URL = 'http://127.0.0.1:8000';
+
+            // --- DOM Element References ---
+            const elements = {
+                loader: document.getElementById('loader'),
+                errorMessage: document.getElementById('errorMessage'),
+                dataDisplay: document.getElementById('dataDisplay'),
+                resultsTitle: document.getElementById('results-title'),
+                yearInput: document.getElementById('year'),
+                gpInput: document.getElementById('gp'),
+                sessionInput: document.getElementById('session'),
+                driverInput: document.getElementById('driver'),
+                buttons: {
+                    schedule: document.getElementById('getScheduleBtn'),
+                    results: document.getElementById('getResultsBtn'),
+                    laps: document.getElementById('getLapsBtn'),
+                    telemetry: document.getElementById('getTelemetryBtn'),
+                    weather: document.getElementById('getWeatherBtn'),
+                    messages: document.getElementById('getMessagesBtn'),
+                }
+            };
+
+            // --- UI State Management ---
+            const showLoading = () => {
+                elements.loader.style.display = 'block';
+                elements.errorMessage.style.display = 'none';
+                elements.dataDisplay.innerHTML = '';
+            };
+
+            const hideLoading = () => {
+                elements.loader.style.display = 'none';
+            };
+
+            const showError = (message) => {
+                elements.errorMessage.textContent = `Error: ${message}`;
+                elements.errorMessage.style.display = 'block';
+                elements.dataDisplay.innerHTML = '';
+            };
+
+            // --- Core Data Fetching Logic ---
+            async function fetchData(endpoint, title) {
+                showLoading();
+                elements.resultsTitle.textContent = title;
+                try {
+                    const response = await fetch(`${API_BASE_URL}${endpoint}`);
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        // Display the specific error from the backend
+                        throw new Error(errorData.detail || `Request failed with status ${response.status}`);
+                    }
+                    const data = await response.json();
+                    renderDataAsTable(data);
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    // Handle network errors or other exceptions
+                    showError(error.message || "Could not connect to the API server.");
+                } finally {
+                    hideLoading();
+                }
+            }
+
+            // --- Data Rendering ---
+            function renderDataAsTable(data) {
+                if (!Array.isArray(data) || data.length === 0) {
+                    elements.dataDisplay.innerHTML = '<p class="welcome-message">No data was returned for this query.</p>';
+                    return;
+                }
+                const table = document.createElement('table');
+                const thead = document.createElement('thead');
+                const tbody = document.createElement('tbody');
+                const headerRow = document.createElement('tr');
+                const headers = Object.keys(data[0]);
+
+                headers.forEach(headerText => {
+                    const th = document.createElement('th');
+                    th.textContent = headerText;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+
+                data.forEach(item => {
+                    const row = document.createElement('tr');
+                    headers.forEach(header => {
+                        const cell = document.createElement('td');
+                        const value = item[header];
+                        cell.textContent = (value === null || typeof value === 'undefined') ? 'N/A' :
+                                           (typeof value === 'object' ? JSON.stringify(value) : value);
+                        row.appendChild(cell);
+                    });
+                    tbody.appendChild(row);
+                });
+
+                table.appendChild(thead);
+                table.appendChild(tbody);
+                elements.dataDisplay.appendChild(table);
+            }
+
+            // --- Smart UI Logic: Enable/Disable buttons based on input validity ---
+            function updateUiState() {
+                const yearValid = elements.yearInput.checkValidity();
+                const gpValid = elements.gpInput.checkValidity() && elements.gpInput.value.trim() !== '';
+                const driverValid = elements.driverInput.checkValidity() && elements.driverInput.value.trim().length === 3;
+
+                elements.buttons.schedule.disabled = !yearValid;
+                
+                const sessionButtonsDisabled = !(yearValid && gpValid);
+                elements.buttons.results.disabled = sessionButtonsDisabled;
+                elements.buttons.laps.disabled = sessionButtonsDisabled;
+                elements.buttons.weather.disabled = sessionButtonsDisabled;
+                elements.buttons.messages.disabled = sessionButtonsDisabled;
+                
+                elements.buttons.telemetry.disabled = !(yearValid && gpValid && driverValid);
+            }
+
+            // --- Event Listeners ---
+            Object.values(elements.buttons).forEach(button => {
+                button.addEventListener('click', (event) => {
+                    const year = elements.yearInput.value;
+                    const gp = elements.gpInput.value;
+                    const session = elements.sessionInput.value;
+                    // Automatically convert driver code to uppercase
+                    const driver = elements.driverInput.value.toUpperCase(); 
+
+                    switch (event.target.id) {
+                        case 'getScheduleBtn':
+                            fetchData(`/schedule/${year}`, `F1 Schedule for ${year}`);
+                            break;
+                        case 'getResultsBtn':
+                            fetchData(`/session/${year}/${gp}/${session}/results`, `Results for ${gp} ${session} ${year}`);
+                            break;
+                        case 'getLapsBtn':
+                            fetchData(`/session/${year}/${gp}/${session}/laps`, `Lap Data for ${gp} ${session} ${year}`);
+                            break;
+                        case 'getTelemetryBtn':
+                            fetchData(`/session/${year}/${gp}/${session}/telemetry/${driver}`, `Telemetry for ${driver} at ${gp} ${session} ${year}`);
+                            break;
+                        case 'getWeatherBtn':
+                            fetchData(`/session/${year}/${gp}/${session}/weather`, `Weather Data for ${gp} ${session} ${year}`);
+                            break;
+                        case 'getMessagesBtn':
+                            fetchData(`/session/${year}/${gp}/${session}/messages`, `Race Control Messages for ${gp} ${session} ${year}`);
+                            break;
+                    }
+                });
+            });
+            
+            // Update button states whenever an input changes
+            ['yearInput', 'gpInput', 'driverInput'].forEach(key => {
+                elements[key].addEventListener('input', updateUiState);
+            });
+
+            // --- Initial State Setup ---
+            updateUiState();
+        });
+    </script>
+</body>
+</html>

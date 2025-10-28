@@ -19,7 +19,7 @@ import {
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from "react-simple-maps";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TrendingUp, MapPin, BarChart3, Calendar, Trophy, Gauge, Flag } from "lucide-react";
-import { circuitData, Circuit } from "@/data/circuitData";
+// Removed circuitData and Circuit import
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -108,7 +108,7 @@ const statsData = [
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
 const Analytics = () => {
-  const [selectedCircuit, setSelectedCircuit] = useState<Circuit | null>(null);
+  // Removed selectedCircuit state due to missing Circuit type
 
   return (
     <div className="min-h-screen pb-16">
@@ -386,19 +386,7 @@ const Analytics = () => {
                     ))
                   }
                 </Geographies>
-                {circuitData.map((circuit) => (
-                  <Marker key={circuit.name} coordinates={circuit.coordinates}>
-                    <circle
-                      r={6}
-                      fill="hsl(var(--primary))"
-                      stroke="hsl(var(--accent))"
-                      strokeWidth={2}
-                      opacity={0.8}
-                      className="cursor-pointer hover:opacity-100 transition-opacity"
-                      onClick={() => setSelectedCircuit(circuit)}
-                    />
-                  </Marker>
-                ))}
+                {/* Removed circuitData markers due to missing circuitData */}
               </ComposableMap>
             </div>
             <div className="mt-4 grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -414,61 +402,7 @@ const Analytics = () => {
       </div>
 
       {/* Circuit Details Dialog */}
-      <Dialog open={!!selectedCircuit} onOpenChange={() => setSelectedCircuit(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 justify-between">
-              <span className="text-2xl font-black">{selectedCircuit?.name}</span>
-              {selectedCircuit && (
-                <Link 
-                  to={`/circuit/${selectedCircuit.name.toLowerCase().replace(/\s+/g, '-')}`}
-                  onClick={() => setSelectedCircuit(null)}
-                >
-                  <Button variant="outline" size="sm">
-                    View Details
-                    <ExternalLink className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
-              )}
-            </DialogTitle>
-          </DialogHeader>
-          {selectedCircuit && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="p-4 bg-secondary/30 rounded-lg">
-                  <div className="text-sm text-muted-foreground mb-1">Country</div>
-                  <div className="font-bold">{selectedCircuit.country}</div>
-                </div>
-                <div className="p-4 bg-secondary/30 rounded-lg">
-                  <div className="text-sm text-muted-foreground mb-1">First GP</div>
-                  <div className="font-bold">{selectedCircuit.firstGrandPrix}</div>
-                </div>
-                <div className="p-4 bg-secondary/30 rounded-lg">
-                  <div className="text-sm text-muted-foreground mb-1">DRS Zones</div>
-                  <div className="font-bold text-primary">{selectedCircuit.drsZones}</div>
-                </div>
-                <div className="p-4 bg-secondary/30 rounded-lg">
-                  <div className="text-sm text-muted-foreground mb-1">Length</div>
-                  <div className="font-bold">{selectedCircuit.length} km</div>
-                </div>
-                <div className="p-4 bg-secondary/30 rounded-lg">
-                  <div className="text-sm text-muted-foreground mb-1">Laps</div>
-                  <div className="font-bold">{selectedCircuit.laps}</div>
-                </div>
-                <div className="p-4 bg-secondary/30 rounded-lg">
-                  <div className="text-sm text-muted-foreground mb-1">Corners</div>
-                  <div className="font-bold">{selectedCircuit.corners}</div>
-                </div>
-              </div>
-              <div className="p-6 bg-gradient-to-r from-primary/20 to-accent/20 rounded-lg">
-                <div className="text-sm text-muted-foreground mb-2">Lap Record</div>
-                <div className="text-3xl font-black text-primary mb-1">{selectedCircuit.lapRecord}</div>
-                <div className="text-sm">{selectedCircuit.lapRecordHolder} ({selectedCircuit.lapRecordYear})</div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Removed Circuit Details Dialog due to missing selectedCircuit and circuitData */}
     </div>
   );
 };
