@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowRight, Trophy, Flag, Users, MapPin, Calendar, Timer, Zap, Mountain, Waves } from "lucide-react";
+import { ArrowRight, Trophy, Flag, Users, MapPin, Calendar, Award } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import React, { useEffect, useMemo } from "react";
@@ -38,7 +38,26 @@ interface ScheduleEvent {
   Location: string;
   EventName: string;
   EventDate: string;
+  EventFormat: string;
   Session5Date: string;
+}
+
+interface RaceResult {
+  Position: number;
+  DriverNumber: string;
+  BroadcastName: string;
+  Abbreviation: string;
+  DriverId: string;
+  TeamName: string;
+  TeamColor: string;
+  FirstName: string;
+  LastName: string;
+  FullName: string;
+  Status: string;
+  Q1?: string;
+  Q2?: string;
+  Q3?: string;
+  Time?: string;
 }
 
 interface TrackInfo {
@@ -47,23 +66,26 @@ interface TrackInfo {
   location: string;
   round: number;
   difficulty: 'easy' | 'medium' | 'hard';
-  fastestLap?: {
-    time: string;
-    driver: string;
-    year: number;
+  eventDate: string;
+  session5Date: string;
+  eventFormat: string;
+  winner2024?: {
+    name: string;
+    driverId: string;
   };
 }
 
 // --- Track Difficulty Data (Based on Historical Data and Track Characteristics) ---
 const TRACK_DIFFICULTY_MAP: { [key: string]: 'easy' | 'medium' | 'hard' } = {
-  'Bahrain': 'medium',
+  'Sakhir': 'medium',
   'Jeddah': 'hard',
   'Melbourne': 'medium',
   'Shanghai': 'medium',
-  'Miami': 'easy',
+  'Suzuka': 'hard',
+  'Miami Gardens': 'easy',
   'Imola': 'hard',
   'Monaco': 'hard',
-  'Montreal': 'medium',
+  'Montréal': 'medium',
   'Barcelona': 'medium',
   'Spielberg': 'easy',
   'Silverstone': 'hard',
@@ -72,40 +94,53 @@ const TRACK_DIFFICULTY_MAP: { [key: string]: 'easy' | 'medium' | 'hard' } = {
   'Zandvoort': 'medium',
   'Monza': 'easy',
   'Baku': 'hard',
-  'Singapore': 'hard',
+  'Marina Bay': 'hard',
   'Austin': 'medium',
   'Mexico City': 'medium',
   'São Paulo': 'hard',
   'Las Vegas': 'medium',
   'Lusail': 'easy',
-  'Yas Marina': 'medium',
+  'Yas Island': 'medium',
 };
 
-// --- Fastest Lap Records (Historical Data - Update with actual records) ---
-const FASTEST_LAP_RECORDS: { [key: string]: { time: string; driver: string; year: number } } = {
-  'Bahrain': { time: '1:31.447', driver: 'Pedro de la Rosa', year: 2005 },
-  'Jeddah': { time: '1:30.734', driver: 'Lewis Hamilton', year: 2021 },
-  'Melbourne': { time: '1:20.260', driver: 'Charles Leclerc', year: 2024 },
-  'Shanghai': { time: '1:32.238', driver: 'Michael Schumacher', year: 2004 },
-  'Miami': { time: '1:29.708', driver: 'Max Verstappen', year: 2023 },
-  'Imola': { time: '1:15.484', driver: 'Lewis Hamilton', year: 2020 },
-  'Monaco': { time: '1:12.909', driver: 'Lewis Hamilton', year: 2021 },
-  'Montreal': { time: '1:13.078', driver: 'Valtteri Bottas', year: 2019 },
-  'Barcelona': { time: '1:18.149', driver: 'Max Verstappen', year: 2023 },
-  'Spielberg': { time: '1:05.619', driver: 'Carlos Sainz', year: 2020 },
-  'Silverstone': { time: '1:27.097', driver: 'Max Verstappen', year: 2020 },
-  'Budapest': { time: '1:16.627', driver: 'Lewis Hamilton', year: 2020 },
-  'Spa-Francorchamps': { time: '1:46.286', driver: 'Valtteri Bottas', year: 2018 },
-  'Zandvoort': { time: '1:11.097', driver: 'Lewis Hamilton', year: 2021 },
-  'Monza': { time: '1:21.046', driver: 'Rubens Barrichello', year: 2004 },
-  'Baku': { time: '1:43.009', driver: 'Charles Leclerc', year: 2019 },
-  'Singapore': { time: '1:41.905', driver: 'Lewis Hamilton', year: 2023 },
-  'Austin': { time: '1:36.169', driver: 'Charles Leclerc', year: 2019 },
-  'Mexico City': { time: '1:17.774', driver: 'Valtteri Bottas', year: 2021 },
-  'São Paulo': { time: '1:10.540', driver: 'Valtteri Bottas', year: 2018 },
-  'Las Vegas': { time: '1:35.490', driver: 'Oscar Piastri', year: 2023 },
-  'Lusail': { time: '1:24.319', driver: 'Max Verstappen', year: 2023 },
-  'Yas Marina': { time: '1:26.103', driver: 'Max Verstappen', year: 2021 },
+// --- 2024 Race Winners (Previous Year) ---
+const RACE_WINNERS_2024: { [key: string]: { name: string; driverId: string } } = {
+  'Sakhir': { name: 'Max Verstappen', driverId: 'max_verstappen' },
+  'Jeddah': { name: 'Max Verstappen', driverId: 'max_verstappen' },
+  'Melbourne': { name: 'Carlos Sainz', driverId: 'sainz' },
+  'Suzuka': { name: 'Max Verstappen', driverId: 'max_verstappen' },
+  'Shanghai': { name: 'Max Verstappen', driverId: 'max_verstappen' },
+  'Miami Gardens': { name: 'Lando Norris', driverId: 'norris' },
+  'Imola': { name: 'Max Verstappen', driverId: 'max_verstappen' },
+  'Monaco': { name: 'Charles Leclerc', driverId: 'leclerc' },
+  'Montréal': { name: 'Max Verstappen', driverId: 'max_verstappen' },
+  'Barcelona': { name: 'Max Verstappen', driverId: 'max_verstappen' },
+  'Spielberg': { name: 'George Russell', driverId: 'russell' },
+  'Silverstone': { name: 'Lewis Hamilton', driverId: 'hamilton' },
+  'Budapest': { name: 'Oscar Piastri', driverId: 'piastri' },
+  'Spa-Francorchamps': { name: 'Lewis Hamilton', driverId: 'hamilton' },
+  'Zandvoort': { name: 'Lando Norris', driverId: 'norris' },
+  'Monza': { name: 'Charles Leclerc', driverId: 'leclerc' },
+  'Baku': { name: 'Oscar Piastri', driverId: 'piastri' },
+  'Marina Bay': { name: 'Lando Norris', driverId: 'norris' },
+  'Austin': { name: 'Charles Leclerc', driverId: 'leclerc' },
+  'Mexico City': { name: 'Carlos Sainz', driverId: 'sainz' },
+  'São Paulo': { name: 'Max Verstappen', driverId: 'max_verstappen' },
+  'Las Vegas': { name: 'George Russell', driverId: 'russell' },
+  'Lusail': { name: 'Max Verstappen', driverId: 'max_verstappen' },
+  'Yas Island': { name: 'Lando Norris', driverId: 'norris' },
+};
+
+// Helper function to fetch race/qualifying results
+const fetchSessionResults = async (year: number, location: string, session: 'Q' | 'R'): Promise<RaceResult[] | null> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/session/${year}/${location}/${session}/results`);
+    if (!response.ok) return null;
+    return response.json();
+  } catch (error) {
+    console.error(`Error fetching ${session} results for ${location}:`, error);
+    return null;
+  }
 };
 
 // --- Sub-components for a cleaner main component ---
@@ -122,13 +157,14 @@ const StatCard = ({ icon: Icon, value, label }) => (
 
 const TrackCard = ({ track }: { track: TrackInfo }) => {
   const difficultyConfig = {
-    easy: { color: 'bg-green-500/20 text-green-500 border-green-500/50', icon: Waves, label: 'Easy' },
-    medium: { color: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/50', icon: Zap, label: 'Medium' },
-    hard: { color: 'bg-red-500/20 text-red-500 border-red-500/50', icon: Mountain, label: 'Hard' }
+    easy: { color: 'bg-green-500/20 text-green-500 border-green-500/50', label: 'Easy' },
+    medium: { color: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/50', label: 'Medium' },
+    hard: { color: 'bg-red-500/20 text-red-500 border-red-500/50', label: 'Hard' }
   };
 
   const config = difficultyConfig[track.difficulty];
-  const DifficultyIcon = config.icon;
+  
+  const formatType = track.eventFormat === 'sprint_qualifying' ? 'Sprint Weekend' : 'Standard';
 
   return (
     <motion.div
@@ -139,7 +175,7 @@ const TrackCard = ({ track }: { track: TrackInfo }) => {
     >
       <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
         <CardHeader className="pb-3">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
               <CardTitle className="text-lg mb-1">{track.name}</CardTitle>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -147,31 +183,44 @@ const TrackCard = ({ track }: { track: TrackInfo }) => {
                 <span>{track.location}, {track.country}</span>
               </div>
             </div>
-            <Badge variant="outline" className={`${config.color} ml-2`}>
-              <DifficultyIcon className="h-3 w-3 mr-1" />
-              {config.label}
-            </Badge>
+            <div className="flex flex-col gap-1 items-end">
+              <Badge variant="outline">
+                Round {track.round}
+              </Badge>
+              <Badge variant="outline" className={`${config.color} text-xs`}>
+                {config.label}
+              </Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="pt-0">
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Round</span>
-              <span className="font-semibold">{track.round}</span>
+              <span className="text-muted-foreground">Race Date</span>
+              <span className="font-semibold">
+                {new Date(track.session5Date).toLocaleDateString('en-US', { 
+                  month: 'short', 
+                  day: 'numeric' 
+                })}
+              </span>
             </div>
-            {track.fastestLap && (
-              <>
-                <div className="border-t pt-2 mt-2">
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
-                    <Timer className="h-3 w-3" />
-                    <span>Fastest Lap Record</span>
-                  </div>
-                  <div className="font-mono text-lg font-bold text-primary">{track.fastestLap.time}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {track.fastestLap.driver} ({track.fastestLap.year})
-                  </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Format</span>
+              <span className="font-semibold">{formatType}</span>
+            </div>
+            {track.winner2024 && (
+              <div className="border-t pt-2 mt-2">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+                  <Award className="h-3 w-3" />
+                  <span>2024 Winner</span>
                 </div>
-              </>
+                <Link 
+                  to={`/driver/${track.winner2024.driverId}`}
+                  className="text-sm font-semibold text-primary hover:underline"
+                >
+                  {track.winner2024.name}
+                </Link>
+              </div>
             )}
           </div>
         </CardContent>
@@ -232,31 +281,108 @@ const Home = () => {
     },
   });
 
+  // Fetch race results for 2024 to get dynamic data (winner)
+  const { data: raceResults2024, isLoading: isLoadingRaceResults } = useQuery({
+    queryKey: ["raceWinners2024"],
+    queryFn: async () => {
+      if (!schedule) return {};
+      
+      const results: { [location: string]: { 
+        winner?: { name: string; driverId: string };
+      }} = {};
+      
+      // Fetch results for all circuits in 2025 schedule
+      const racesToFetch = schedule.filter(event => event.RoundNumber > 0);
+      
+      console.log(`Fetching 2024 race winners for ${racesToFetch.length} circuits`);
+      
+      // Fetch all races in parallel for MUCH better performance
+      const promises = racesToFetch.map(async (event) => {
+        const locationResults: typeof results[string] = {};
+        
+        console.log(`Fetching data for ${event.Location} (${event.EventName})`);
+        
+        try {
+          // Fetch 2024 race results
+          const raceResults = await fetchSessionResults(2024, event.Location, 'R');
+          
+          console.log(`${event.Location}: R results=${raceResults?.length || 0}`);
+          
+          // Process race results for 2024 winner
+          if (raceResults && raceResults.length > 0) {
+            const winner = raceResults.find(r => r.Position === 1);
+            if (winner) {
+              locationResults.winner = {
+                name: winner.FullName || `${winner.FirstName} ${winner.LastName}`,
+                driverId: winner.DriverId || winner.Abbreviation?.toLowerCase() || '',
+              };
+            }
+          }
+          
+          return { location: event.Location, data: locationResults };
+        } catch (error) {
+          console.error(`Error fetching data for ${event.Location}:`, error);
+          return { location: event.Location, data: locationResults };
+        }
+      });
+      
+      // Wait for all promises to settle (both fulfilled and rejected)
+      const settledResults = await Promise.allSettled(promises);
+      
+      // Collect all successful results
+      settledResults.forEach((result) => {
+        if (result.status === 'fulfilled' && result.value) {
+          results[result.value.location] = result.value.data;
+        }
+      });
+      
+      return results;
+    },
+    enabled: !!schedule,
+    staleTime: 1000 * 60 * 60 * 24 * 3, // 3 days
+    gcTime: 1000 * 60 * 60 * 24 * 7, // 7 days
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
   // --- Process Track Data ---
-  const tracksByDifficulty = useMemo(() => {
-    if (!schedule) return { easy: [], medium: [], hard: [] };
+  const { allTracks, nextRace } = useMemo(() => {
+    if (!schedule) return { allTracks: [], nextRace: null };
 
-    const tracks: TrackInfo[] = schedule.map(event => {
-      const locationKey = event.Location;
-      const difficulty = TRACK_DIFFICULTY_MAP[locationKey] || 'medium';
-      const fastestLap = FASTEST_LAP_RECORDS[locationKey];
+    const now = new Date();
+    const tracks: TrackInfo[] = schedule
+      .filter(event => event.RoundNumber > 0) // Exclude testing sessions
+      .map(event => {
+        const locationKey = event.Location;
+        const difficulty = TRACK_DIFFICULTY_MAP[locationKey] || 'medium';
+        
+        // Get dynamic data from 2024 results or fall back to static data
+        const dynamicData = raceResults2024?.[locationKey];
+        const winner2024 = dynamicData?.winner || RACE_WINNERS_2024[locationKey];
 
-      return {
-        name: event.EventName,
-        country: event.Country,
-        location: event.Location,
-        round: event.RoundNumber,
-        difficulty,
-        fastestLap,
-      };
-    });
+        return {
+          name: event.EventName,
+          country: event.Country,
+          location: event.Location,
+          round: event.RoundNumber,
+          difficulty,
+          winner2024,
+          eventDate: event.EventDate,
+          session5Date: event.Session5Date,
+          eventFormat: event.EventFormat,
+        };
+      });
+
+    // Find next race (race date is in the future)
+    const upcomingRaces = tracks.filter(track => new Date(track.session5Date) > now);
+    const nextUpcomingRace = upcomingRaces.length > 0 ? upcomingRaces[0] : null;
 
     return {
-      easy: tracks.filter(t => t.difficulty === 'easy'),
-      medium: tracks.filter(t => t.difficulty === 'medium'),
-      hard: tracks.filter(t => t.difficulty === 'hard'),
+      allTracks: tracks,
+      nextRace: nextUpcomingRace,
     };
-  }, [schedule]);
+  }, [schedule, raceResults2024]);
 
   const totalRaces = schedule?.length || 0;
   const totalDrivers = Math.min(drivers?.length || 0, 20);
@@ -329,7 +455,7 @@ const Home = () => {
               {LATEST_YEAR} Season Calendar
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              {totalRaces} thrilling races across the globe, each with its unique challenges and fastest lap records.
+              {allTracks.length} thrilling races across the globe. View 2024 winners for each circuit.
             </p>
           </motion.div>
         </div>
@@ -338,59 +464,99 @@ const Home = () => {
           <LoadingSkeleton />
         ) : (
           <div className="space-y-12">
-            {/* Easy Tracks */}
-            {tracksByDifficulty.easy.length > 0 && (
-              <div>
-                <div className="flex items-center gap-3 mb-6">
-                  <Waves className="h-6 w-6 text-green-500" />
-                  <h3 className="text-2xl font-bold">Easy Tracks</h3>
-                  <Badge variant="outline" className="bg-green-500/20 text-green-500 border-green-500/50">
-                    {tracksByDifficulty.easy.length} Circuits
-                  </Badge>
-                </div>
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {tracksByDifficulty.easy.map((track, index) => (
-                    <TrackCard key={index} track={track} />
-                  ))}
-                </div>
-              </div>
+            {/* Next Race Card - Large Featured Card */}
+            {nextRace && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+              >
+                <Card className="bg-gradient-to-br from-primary/20 to-primary/5 border-2 border-primary/50 shadow-2xl">
+                  <CardHeader className="pb-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <Badge className="bg-primary text-primary-foreground">
+                            Next Race
+                          </Badge>
+                          <Badge 
+                            variant="outline" 
+                            className={
+                              nextRace.difficulty === 'easy' 
+                                ? 'bg-green-500/20 text-green-500 border-green-500/50'
+                                : nextRace.difficulty === 'medium'
+                                ? 'bg-yellow-500/20 text-yellow-500 border-yellow-500/50'
+                                : 'bg-red-500/20 text-red-500 border-red-500/50'
+                            }
+                          >
+                            {nextRace.difficulty.charAt(0).toUpperCase() + nextRace.difficulty.slice(1)} Track
+                          </Badge>
+                          {nextRace.eventFormat === 'sprint_qualifying' && (
+                            <Badge variant="outline" className="bg-purple-500/20 text-purple-500 border-purple-500/50">
+                              Sprint Weekend
+                            </Badge>
+                          )}
+                        </div>
+                        <CardTitle className="text-3xl md:text-4xl mb-3">{nextRace.name}</CardTitle>
+                        <div className="flex flex-wrap gap-4 text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-5 w-5" />
+                            <span className="text-lg">{nextRace.location}, {nextRace.country}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-5 w-5" />
+                            <span className="text-lg font-semibold">
+                              {new Date(nextRace.session5Date).toLocaleDateString('en-US', { 
+                                weekday: 'long',
+                                month: 'long', 
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-2xl px-4 py-2">
+                        Round {nextRace.round}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {nextRace.winner2024 && (
+                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-6 border border-border/50">
+                        <div className="flex items-center gap-2 text-muted-foreground mb-3">
+                          <Award className="h-5 w-5" />
+                          <span className="text-lg font-medium">2024 Winner</span>
+                        </div>
+                        <Link 
+                          to={`/driver/${nextRace.winner2024.driverId}`}
+                          className="text-3xl md:text-4xl font-bold text-primary hover:underline block mb-2"
+                        >
+                          {nextRace.winner2024.name}
+                        </Link>
+                        <div className="text-lg text-muted-foreground">
+                          Click to view driver profile
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
             )}
 
-            {/* Medium Tracks */}
-            {tracksByDifficulty.medium.length > 0 && (
-              <div>
-                <div className="flex items-center gap-3 mb-6">
-                  <Zap className="h-6 w-6 text-yellow-500" />
-                  <h3 className="text-2xl font-bold">Medium Tracks</h3>
-                  <Badge variant="outline" className="bg-yellow-500/20 text-yellow-500 border-yellow-500/50">
-                    {tracksByDifficulty.medium.length} Circuits
-                  </Badge>
-                </div>
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {tracksByDifficulty.medium.map((track, index) => (
-                    <TrackCard key={index} track={track} />
-                  ))}
-                </div>
+            {/* All Races in Sequential Order */}
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <Flag className="h-6 w-6 text-primary" />
+                <h3 className="text-2xl font-bold">All {totalRaces} Races</h3>
               </div>
-            )}
-
-            {/* Hard Tracks */}
-            {tracksByDifficulty.hard.length > 0 && (
-              <div>
-                <div className="flex items-center gap-3 mb-6">
-                  <Mountain className="h-6 w-6 text-red-500" />
-                  <h3 className="text-2xl font-bold">Hard Tracks</h3>
-                  <Badge variant="outline" className="bg-red-500/20 text-red-500 border-red-500/50">
-                    {tracksByDifficulty.hard.length} Circuits
-                  </Badge>
-                </div>
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {tracksByDifficulty.hard.map((track, index) => (
-                    <TrackCard key={index} track={track} />
-                  ))}
-                </div>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {allTracks.map((track, index) => (
+                  <TrackCard key={index} track={track} />
+                ))}
               </div>
-            )}
+            </div>
           </div>
         )}
       </section>

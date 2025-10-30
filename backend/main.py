@@ -3,6 +3,9 @@ import logging
 from enum import Enum
 from pathlib import Path as FilePath
 from typing import List, Dict, Any
+import json
+import hashlib
+from datetime import datetime, timedelta
 
 import fastf1
 import fastf1.ergast as ergast
@@ -22,6 +25,7 @@ class Settings(BaseSettings):
     """Application settings with environment variable support"""
     CORS_ORIGINS: List[str] = ["*"]
     CACHE_DIR: str = "f1_cache"
+    PREDICTIONS_CACHE_DIR: str = "predictions_cache"
     LOG_LEVEL: str = "INFO"
 
     model_config = SettingsConfigDict(
@@ -44,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 # --- 3. Application Initialization ---
 FilePath(settings.CACHE_DIR).mkdir(parents=True, exist_ok=True)
+FilePath(settings.PREDICTIONS_CACHE_DIR).mkdir(parents=True, exist_ok=True)
 
 try:
     fastf1.Cache.enable_cache(settings.CACHE_DIR)
@@ -56,9 +61,9 @@ fastf1.ergast.interface.BASE_URL = "https://api.jolpi.ca/ergast/f1"
 logger.info("Configured FastF1 to use jolpica-f1 API")
 
 app = FastAPI(
-    title="FastF1 API (Production Ready)",
-    description="An improved, production-ready API to access Formula 1 data using the FastF1 library with jolpica-f1 backend.",
-    version="2.2.0",
+    title="Formula Uno API",
+    description="Formula Uno API to access Formula 1 data using the FastF1 library with jolpica-f1 backend.",
+    version="1.0.0",
 )
 
 
@@ -446,6 +451,160 @@ async def health_check():
         "cache_dir": settings.CACHE_DIR,
         "api_backend": "jolpica-f1"
     }
+
+
+# --- Prediction Caching Endpoints ---
+def get_cache_key(year: int, driver_id: str) -> str:
+    """Generate cache key for driver predictions"""
+    return hashlib.md5(f"{year}_{driver_id}".encode()).hexdigest()
+
+
+def get_predictions_cache_path(cache_key: str) -> FilePath:
+    """Get file path for cached predictions"""
+    return FilePath(settings.PREDICTIONS_CACHE_DIR) / f"{cache_key}.json"
+
+
+def is_cache_valid(cache_path: FilePath, max_age_hours: int = 24) -> bool:
+    """Check if cache file exists and is not expired"""
+    if not cache_path.exists():
+        return False
+    
+    file_time = datetime.fromtimestamp(cache_path.stat().st_mtime)
+    age = datetime.now() - file_time
+    return age < timedelta(hours=max_age_hours)
+
+
+@app.get("/predictions/driver/{year}/{driver_id}")
+async def get_driver_predictions_cached(
+    year: int = Path(..., ge=1950, le=2030),
+    driver_id: str = Path(..., min_length=1),
+    force_refresh: bool = False
+):
+    """
+    Get cached championship predictions for a specific driver.
+    Returns cached data if available and valid, otherwise returns status indicating recalculation needed.
+    
+    Args:
+        year: Season year
+        driver_id: Driver ID
+        force_refresh: Force cache refresh
+        
+    Returns:
+        Cached predictions or status object
+    """
+    cache_key = get_cache_key(year, driver_id)
+    cache_path = get_predictions_cache_path(cache_key)
+    
+    # Check if cache is valid and force_refresh is not set
+    if not force_refresh and is_cache_valid(cache_path):
+        try:
+            with open(cache_path, 'r') as f:
+                cached_data = json.load(f)
+                logger.info(f"Returning cached predictions for {driver_id} ({year})")
+                return {
+                    "cached": True,
+                    "timestamp": cached_data.get("timestamp"),
+                    "data": cached_data.get("data")
+                }
+        except Exception as e:
+            logger.error(f"Failed to read cache for {driver_id}: {e}")
+    
+    # Return status indicating fresh calculation needed
+    return {
+        "cached": False,
+        "message": "Cache not available or expired. Client should calculate and store predictions."
+    }
+
+
+@app.post("/predictions/driver/{year}/{driver_id}")
+async def store_driver_predictions(
+    year: int = Path(..., ge=1950, le=2030),
+    driver_id: str = Path(..., min_length=1),
+    predictions: Dict[str, Any] = None
+):
+    """
+    Store championship predictions for a specific driver in cache.
+    
+    Args:
+        year: Season year
+        driver_id: Driver ID
+        predictions: Prediction data to cache
+        
+    Returns:
+        Success status
+    """
+    if not predictions:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Predictions data is required"}
+        )
+    
+    cache_key = get_cache_key(year, driver_id)
+    cache_path = get_predictions_cache_path(cache_key)
+    
+    try:
+        cache_data = {
+            "timestamp": datetime.now().isoformat(),
+            "year": year,
+            "driver_id": driver_id,
+            "data": predictions
+        }
+        
+        with open(cache_path, 'w') as f:
+            json.dump(cache_data, f)
+        
+        logger.info(f"Stored predictions cache for {driver_id} ({year})")
+        return {
+            "success": True,
+            "message": "Predictions cached successfully",
+            "cache_key": cache_key
+        }
+    except Exception as e:
+        logger.error(f"Failed to store predictions cache for {driver_id}: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Failed to cache predictions: {str(e)}"}
+        )
+
+
+@app.delete("/predictions/cache/{year}")
+async def clear_predictions_cache(year: int = Path(..., ge=1950, le=2030)):
+    """
+    Clear all cached predictions for a specific year.
+    Useful when standings data is updated.
+    
+    Args:
+        year: Season year
+        
+    Returns:
+        Number of cache files cleared
+    """
+    try:
+        cache_dir = FilePath(settings.PREDICTIONS_CACHE_DIR)
+        cleared = 0
+        
+        for cache_file in cache_dir.glob("*.json"):
+            try:
+                with open(cache_file, 'r') as f:
+                    data = json.load(f)
+                    if data.get("year") == year:
+                        cache_file.unlink()
+                        cleared += 1
+            except Exception as e:
+                logger.warning(f"Failed to process cache file {cache_file}: {e}")
+        
+        logger.info(f"Cleared {cleared} prediction cache files for year {year}")
+        return {
+            "success": True,
+            "cleared": cleared,
+            "message": f"Cleared {cleared} cached prediction(s) for {year}"
+        }
+    except Exception as e:
+        logger.error(f"Failed to clear predictions cache: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Failed to clear cache: {str(e)}"}
+        )
 
 
 if __name__ == "__main__":

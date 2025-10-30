@@ -75,9 +75,9 @@ interface RaceEvent {
   EventDate: string;
 }
 
-// Monte Carlo simulation for championship prediction
+// Enhanced Monte Carlo simulation with variance and form consideration
 const simulateChampionship = (drivers: Driver[], remainingRaces: number) => {
-  const SIMULATIONS = 10000;
+  const SIMULATIONS = 50000; // Increased for better accuracy
   const POINTS_DISTRIBUTION = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
   
   const wins = drivers.reduce((acc, driver) => {
@@ -85,26 +85,58 @@ const simulateChampionship = (drivers: Driver[], remainingRaces: number) => {
     return acc;
   }, {} as Record<string, number>);
 
+  // Calculate form factor based on recent performance
+  const calculateFormFactor = (driver: Driver) => {
+    const winRate = driver.wins / Math.max(1, 20 - remainingRaces);
+    const pointsRate = driver.points / Math.max(1, 20 - remainingRaces);
+    return Math.pow(1 + winRate * 0.5 + pointsRate / 500, 1.2);
+  };
+
+  const formFactors = drivers.map(d => calculateFormFactor(d));
+
   for (let sim = 0; sim < SIMULATIONS; sim++) {
     const simulatedPoints = drivers.map(d => ({ ...d, simPoints: d.points }));
     
     for (let race = 0; race < remainingRaces; race++) {
-      // Weighted random selection based on current performance
-      const totalPoints = simulatedPoints.reduce((sum, d) => sum + d.points + 1, 0);
-      const weights = simulatedPoints.map(d => Math.pow((d.points + 1) / totalPoints, 0.8));
+      // More sophisticated weighting considering form, points, and variance
+      const weights = simulatedPoints.map((driver, idx) => {
+        const pointsWeight = Math.pow((driver.simPoints + 50) / 500, 0.7);
+        const formWeight = formFactors[idx];
+        const randomFactor = 0.6 + Math.random() * 0.8; // 60-140% variance
+        return pointsWeight * formWeight * randomFactor;
+      });
       
-      // Generate race results with some randomness
-      const raceResults = simulatedPoints.map((driver, idx) => ({
-        driver,
-        performance: weights[idx] * (0.5 + Math.random() * 1.5)
-      })).sort((a, b) => b.performance - a.performance);
+      // Normalize weights
+      const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+      const normalizedWeights = weights.map(w => w / totalWeight);
       
-      // Award points
+      // Generate race results using weighted probabilities
+      const raceResults = simulatedPoints
+        .map((driver, idx) => ({
+          driver,
+          performance: normalizedWeights[idx] + Math.random() * 0.3
+        }))
+        .sort((a, b) => b.performance - a.performance);
+      
+      // Award points with sprint race consideration (25% chance)
+      const isSprintRace = Math.random() < 0.25;
       raceResults.forEach((result, position) => {
         if (position < POINTS_DISTRIBUTION.length) {
           result.driver.simPoints += POINTS_DISTRIBUTION[position];
+          if (isSprintRace && position < 8) {
+            // Sprint points: 8,7,6,5,4,3,2,1
+            result.driver.simPoints += (8 - position);
+          }
         }
       });
+      
+      // Fastest lap point (20% chance for top 10)
+      if (Math.random() < 0.2) {
+        const fastestLapIdx = Math.floor(Math.random() * Math.min(10, raceResults.length));
+        if (raceResults[fastestLapIdx].driver.simPoints > 0) {
+          raceResults[fastestLapIdx].driver.simPoints += 1;
+        }
+      }
     }
     
     // Find winner
@@ -114,11 +146,38 @@ const simulateChampionship = (drivers: Driver[], remainingRaces: number) => {
     wins[winner.driverId]++;
   }
 
-  return drivers.map(driver => ({
-    ...driver,
-    winProbability: (wins[driver.driverId] / SIMULATIONS) * 100,
-    expectedPoints: driver.points + (remainingRaces * 12 * (driver.points / Math.max(...drivers.map(d => d.points))))
-  })).sort((a, b) => b.winProbability - a.winProbability);
+  return drivers.map(driver => {
+    const winProb = (wins[driver.driverId] / SIMULATIONS) * 100;
+    const avgPointsPerRace = driver.points / Math.max(1, 20 - remainingRaces);
+    const expectedPoints = driver.points + (remainingRaces * avgPointsPerRace * 0.95); // 5% degradation factor
+    
+    return {
+      ...driver,
+      winProbability: winProb,
+      expectedPoints,
+      pointsNeeded: Math.max(0, (drivers[0].points + remainingRaces * 15) - driver.points),
+      avgFinishNeeded: calculateRequiredAvgFinish(driver, drivers[0], remainingRaces)
+    };
+  }).sort((a, b) => b.winProbability - a.winProbability);
+};
+
+// Calculate required average finish position to win championship
+const calculateRequiredAvgFinish = (driver: Driver, leader: Driver, remainingRaces: number) => {
+  if (remainingRaces === 0) return 0;
+  if (driver.driverId === leader.driverId) return 3; // Maintain top 3 average
+  
+  const pointsGap = leader.points - driver.points;
+  const leaderExpectedPoints = remainingRaces * 12; // Conservative estimate for leader
+  const totalPointsNeeded = pointsGap + leaderExpectedPoints;
+  const avgPointsNeeded = totalPointsNeeded / remainingRaces;
+  
+  // Convert points to approximate finishing position
+  if (avgPointsNeeded >= 25) return 1;
+  if (avgPointsNeeded >= 18) return 2;
+  if (avgPointsNeeded >= 15) return 3;
+  if (avgPointsNeeded >= 12) return 4;
+  if (avgPointsNeeded >= 10) return 5;
+  return Math.min(10, Math.ceil(12 - avgPointsNeeded));
 };
 
 // Predict next race podium using recent form and track characteristics
@@ -486,10 +545,13 @@ const Predictions = () => {
                 <CardTitle className="flex items-center gap-3">
                   <BarChart3 className="h-6 w-6" />
                   Title Fight Analysis
+                  <Badge variant="outline" className="ml-auto">
+                    50,000 Simulations
+                  </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid md:grid-cols-3 gap-6">
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                   <div className="p-6 rounded-lg bg-gradient-to-br from-green-500/20 to-green-500/5 border border-green-500/30">
                     <div className="flex items-center gap-3 mb-4">
                       <TrendingUp className="h-8 w-8 text-green-500" />
@@ -498,30 +560,39 @@ const Predictions = () => {
                         <p className="text-2xl font-bold">{championshipPredictions[0]?.familyName}</p>
                       </div>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {championshipPredictions[0]?.winProbability.toFixed(1)}% chance based on current form, 
-                      {championshipPredictions[0]?.points - championshipPredictions[1]?.points} point lead, 
-                      and historical performance patterns.
-                    </p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Win Probability</span>
+                        <span className="font-bold text-green-500">{championshipPredictions[0]?.winProbability.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Current Points</span>
+                        <span className="font-bold">{championshipPredictions[0]?.points}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Projected Final</span>
+                        <span className="font-bold">{Math.round(championshipPredictions[0]?.expectedPoints || 0)}</span>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="p-6 rounded-lg bg-gradient-to-br from-orange-500/20 to-orange-500/5 border border-orange-500/30">
                     <div className="flex items-center gap-3 mb-4">
-                      <AlertCircle className="h-8 w-8 text-orange-500" />
+                      <Target className="h-8 w-8 text-orange-500" />
                       <div>
-                        <p className="text-sm text-muted-foreground">Critical Races</p>
-                        <p className="text-2xl font-bold">{Math.min(5, remainingRaces)}</p>
+                        <p className="text-sm text-muted-foreground">Required Avg Finish</p>
+                        <p className="text-2xl font-bold">P{championshipPredictions[1]?.avgFinishNeeded?.toFixed(1) || '?'}</p>
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      The next {Math.min(5, remainingRaces)} races are mathematically decisive. 
-                      Championship leader must maintain avg P{Math.ceil(3 - (championshipPredictions[0]?.wins / 10))} or better.
+                      {championshipPredictions[1]?.familyName} needs an average finish of P{championshipPredictions[1]?.avgFinishNeeded?.toFixed(1)} 
+                      in remaining {remainingRaces} races to challenge for the title.
                     </p>
                   </div>
 
                   <div className="p-6 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-500/5 border border-blue-500/30">
                     <div className="flex items-center gap-3 mb-4">
-                      <Target className="h-8 w-8 text-blue-500" />
+                      <AlertCircle className="h-8 w-8 text-blue-500" />
                       <div>
                         <p className="text-sm text-muted-foreground">Points Gap</p>
                         <p className="text-2xl font-bold">
@@ -530,9 +601,87 @@ const Predictions = () => {
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Gap between P1 and P2. Needs {Math.ceil((championshipPredictions[0]?.points - championshipPredictions[1]?.points) / 25)} race wins 
-                      to mathematically clinch the championship.
+                      Current gap between P1 and P2. With {remainingRaces} races left, 
+                      {championshipPredictions[1]?.familyName} needs {championshipPredictions[1]?.pointsNeeded} points to lead.
                     </p>
+                  </div>
+
+                  <div className="p-6 rounded-lg bg-gradient-to-br from-purple-500/20 to-purple-500/5 border border-purple-500/30">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Crown className="h-8 w-8 text-purple-500" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Critical Races</p>
+                        <p className="text-2xl font-bold">{Math.min(5, remainingRaces)}</p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      The next {Math.min(5, remainingRaces)} races will be decisive. 
+                      {championshipPredictions[0]?.familyName} must maintain consistency to secure the championship.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Detailed Championship Scenarios */}
+                <div className="mt-8 p-6 rounded-lg bg-muted/50 border border-border">
+                  <h4 className="font-semibold text-lg mb-4 flex items-center gap-2">
+                    <Brain className="h-5 w-5" />
+                    Championship Scenarios
+                  </h4>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div>
+                      <h5 className="font-medium mb-3 text-sm text-muted-foreground">TOP CONTENDERS</h5>
+                      <div className="space-y-3">
+                        {championshipPredictions.slice(0, 4).map((driver, idx) => (
+                          <div key={driver.driverId} className="flex items-center justify-between p-3 rounded-lg bg-background/50">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                                idx === 0 ? 'bg-amber-500 text-white' :
+                                idx === 1 ? 'bg-gray-400 text-white' :
+                                idx === 2 ? 'bg-orange-600 text-white' :
+                                'bg-muted text-muted-foreground'
+                              }`}>
+                                {idx + 1}
+                              </div>
+                              <div>
+                                <p className="font-medium">{driver.givenName} {driver.familyName}</p>
+                                <p className="text-xs text-muted-foreground">{driver.points} pts • {driver.wins} wins</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold text-sm">{driver.winProbability.toFixed(1)}%</p>
+                              <p className="text-xs text-muted-foreground">win chance</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <h5 className="font-medium mb-3 text-sm text-muted-foreground">KEY INSIGHTS</h5>
+                      <div className="space-y-3">
+                        <div className="p-3 rounded-lg bg-background/50">
+                          <p className="text-sm font-medium mb-1">Maximum Possible Points</p>
+                          <p className="text-xs text-muted-foreground">
+                            With {remainingRaces} races left, maximum achievable: {remainingRaces * 26} points 
+                            (including fastest laps)
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-background/50">
+                          <p className="text-sm font-medium mb-1">Championship Clinch Scenario</p>
+                          <p className="text-xs text-muted-foreground">
+                            {championshipPredictions[0]?.familyName} can secure the title with {Math.ceil((championshipPredictions[0]?.pointsNeeded || 0) / 25)} consecutive wins,
+                            or by maintaining an average of P{championshipPredictions[0]?.avgFinishNeeded?.toFixed(1) || 3} finishes.
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-background/50">
+                          <p className="text-sm font-medium mb-1">Underdog Chances</p>
+                          <p className="text-xs text-muted-foreground">
+                            {championshipPredictions.slice(2, 4).map(d => d.familyName).join(' and ')} have mathematical chances 
+                            but would need perfect races and leader DNFs.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </CardContent>

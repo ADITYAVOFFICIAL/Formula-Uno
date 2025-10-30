@@ -20,22 +20,35 @@ import Predictions from "./pages/Predictions"; // Import the new Predictions pag
 const queryClient = new QueryClient();
 
 const App = () => {
-  const [isMuted, setIsMuted] = useState(false); // Start unmuted so user can hear
+  const [isMuted, setIsMuted] = useState(true); // Start muted to avoid autoplay block
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // --- Audio Autoplay Logic ---
   useEffect(() => {
     audioRef.current = new Audio('/max.mp3');
     audioRef.current.loop = true;
-    audioRef.current.muted = false; // Start unmuted
-    audioRef.current.volume = 0.5; // Set volume to 50% (was typo: =1 should be = 0.5)
+    audioRef.current.muted = true; // Start muted to bypass autoplay restrictions
+    audioRef.current.volume = 0.6; // Set volume to 60%
 
     const playAudio = async () => {
       try {
         await audioRef.current?.play();
-        console.log("Audio started playing");
+        console.log("Audio ready - click the volume button to unmute");
       } catch (error) {
         console.error("Audio autoplay was prevented by the browser.", error);
+        // Try playing on first user interaction
+        const startAudioOnInteraction = async () => {
+          if (audioRef.current) {
+            try {
+              await audioRef.current.play();
+              console.log("Audio started after user interaction");
+              document.removeEventListener('click', startAudioOnInteraction);
+            } catch (e) {
+              console.error("Still couldn't play audio:", e);
+            }
+          }
+        };
+        document.addEventListener('click', startAudioOnInteraction, { once: true });
       }
     };
     playAudio();

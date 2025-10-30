@@ -198,38 +198,99 @@ const calculateChampionshipChances = (
   winProbability: number;
   pointsBehindLeader: number;
   driversAhead: number;
+  avgFinishNeeded: number;
+  racesToClinch: number;
 } => {
   const currentPoints = currentDriver.points;
   const maxPossiblePoints = currentPoints + maxRemainingPoints;
   const pointsBehindLeader = leaderPoints - currentPoints;
   const canWin = maxPossiblePoints >= leaderPoints;
   const pointsNeeded = Math.max(0, leaderPoints - currentPoints + 1);
-  
-  // Calculate win probability based on multiple factors
-  const driversAhead = allDrivers.filter(d => d.points > currentPoints).length;
-  const pointsGap = pointsBehindLeader;
   const racesRemaining = Math.floor(maxRemainingPoints / POINTS_FOR_WIN);
+  const driversAhead = allDrivers.filter(d => d.points > currentPoints).length;
   
+  // Enhanced Monte Carlo simulation for accurate win probability - 50K SIMULATIONS
   let winProbability = 0;
-  if (canWin && racesRemaining > 0) {
-    // Base probability on points gap and races remaining
-    const gapPercentage = pointsGap / (maxRemainingPoints || 1);
-    const positionFactor = 1 - (driversAhead * 0.15); // Penalty for each driver ahead
-    const momentumFactor = currentDriver.wins > 0 ? 1.1 : 0.9; // Bonus for winners
-    
-    // Calculate probability (0-100%)
-    winProbability = Math.max(0, Math.min(100, 
-      (1 - gapPercentage) * positionFactor * momentumFactor * 100
-    ));
-    
-    // If mathematically eliminated, probability is 0
-    if (!canWin) winProbability = 0;
-    
-    // If leading, high probability
-    if (currentDriver.position === 1) {
-      winProbability = Math.max(winProbability, 75);
+  if (racesRemaining > 0) {
+    const SIMULATIONS = 50000; // Increased from 10K to match Predictions page
+    const POINTS_DISTRIBUTION = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
+    let wins = 0;
+
+    // Calculate form factor based on recent performance
+    const racesCompleted = TOTAL_RACES - racesRemaining;
+    const winRate = currentDriver.wins / Math.max(1, racesCompleted);
+    const pointsRate = currentDriver.points / Math.max(1, racesCompleted);
+    const formFactor = Math.pow(1 + winRate * 0.5 + pointsRate / 500, 1.2);
+
+    // Get top drivers for simulation
+    const topDrivers = allDrivers.slice(0, Math.min(10, allDrivers.length));
+    const allFormFactors = topDrivers.map(d => {
+      const dRaces = Math.max(1, racesCompleted);
+      const dWinRate = d.wins / dRaces;
+      const dPointsRate = d.points / dRaces;
+      return Math.pow(1 + dWinRate * 0.5 + dPointsRate / 500, 1.2);
+    });
+
+    for (let sim = 0; sim < SIMULATIONS; sim++) {
+      const simPoints = topDrivers.map(d => ({ ...d, simPoints: d.points }));
+      
+      for (let race = 0; race < racesRemaining; race++) {
+        // More sophisticated weighting considering form, points, and variance
+        const weights = simPoints.map((driver, idx) => {
+          const pointsWeight = Math.pow((driver.simPoints + 50) / 500, 0.7);
+          const formWeight = allFormFactors[idx];
+          const randomFactor = 0.6 + Math.random() * 0.8; // 60-140% variance
+          return pointsWeight * formWeight * randomFactor;
+        });
+
+        const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+        const normalizedWeights = weights.map(w => w / totalWeight);
+
+        // Generate race results using weighted probabilities
+        const raceResults = simPoints.map((driver, idx) => ({
+          driver,
+          performance: normalizedWeights[idx] + Math.random() * 0.3
+        })).sort((a, b) => b.performance - a.performance);
+
+        // Award points with sprint race consideration (25% chance)
+        const isSprintRace = Math.random() < 0.25;
+        raceResults.forEach((result, position) => {
+          if (position < POINTS_DISTRIBUTION.length) {
+            result.driver.simPoints += POINTS_DISTRIBUTION[position];
+            if (isSprintRace && position < 8) {
+              // Sprint points: 8,7,6,5,4,3,2,1
+              result.driver.simPoints += (8 - position);
+            }
+          }
+        });
+
+        // Fastest lap point (20% chance for top 10)
+        if (Math.random() < 0.2) {
+          const fastestLapIdx = Math.floor(Math.random() * Math.min(10, raceResults.length));
+          if (raceResults[fastestLapIdx].driver.simPoints > 0) {
+            raceResults[fastestLapIdx].driver.simPoints += 1;
+          }
+        }
+      }
+
+      // Find winner
+      const winner = simPoints.reduce((prev, current) => 
+        current.simPoints > prev.simPoints ? current : prev
+      );
+      
+      if (winner.driverId === currentDriver.driverId) {
+        wins++;
+      }
     }
+
+    winProbability = (wins / SIMULATIONS) * 100;
   }
+  
+  // Calculate average finish needed
+  const avgFinishNeeded = calculateRequiredAvgFinish(currentDriver, allDrivers[0], racesRemaining, pointsBehindLeader);
+  
+  // Calculate races to clinch (consecutive wins needed)
+  const racesToClinch = Math.ceil(pointsNeeded / POINTS_FOR_WIN);
   
   return {
     canWin,
@@ -238,7 +299,37 @@ const calculateChampionshipChances = (
     winProbability: Math.round(winProbability * 10) / 10,
     pointsBehindLeader,
     driversAhead,
+    avgFinishNeeded,
+    racesToClinch,
   };
+};
+
+// Calculate required average finish position
+const calculateRequiredAvgFinish = (
+  driver: DriverStanding,
+  leader: DriverStanding,
+  remainingRaces: number,
+  pointsGap: number
+): number => {
+  if (remainingRaces === 0) return 0;
+  if (driver.driverId === leader.driverId) return 3; // Maintain top 3 average
+  
+  const leaderExpectedPoints = remainingRaces * 12; // Conservative estimate for leader
+  const totalPointsNeeded = pointsGap + leaderExpectedPoints;
+  const avgPointsNeeded = totalPointsNeeded / remainingRaces;
+  
+  // Convert points to approximate finishing position
+  if (avgPointsNeeded >= 25) return 1.0;
+  if (avgPointsNeeded >= 18) return 2.0;
+  if (avgPointsNeeded >= 15) return 3.0;
+  if (avgPointsNeeded >= 12) return 4.0;
+  if (avgPointsNeeded >= 10) return 5.0;
+  if (avgPointsNeeded >= 8) return 6.0;
+  if (avgPointsNeeded >= 6) return 7.0;
+  if (avgPointsNeeded >= 4) return 8.0;
+  if (avgPointsNeeded >= 2) return 9.0;
+  if (avgPointsNeeded >= 1) return 10.0;
+  return Math.min(10, Math.ceil(12 - avgPointsNeeded));
 };
 
 // --- Helper & Skeleton Components ---
@@ -776,52 +867,77 @@ const DriverProfile = () => {
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">Grand Prix Podiums</span>
-                  <span className="text-lg font-bold">{Math.max(driver.wins, Math.floor(driver.points / 18))}</span>
+                  <span className="text-lg font-bold">
+                    <span className="text-xs text-muted-foreground">(Calculated)</span> {Math.max(driver.wins, Math.floor(driver.points / 18))}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">Grand Prix Poles</span>
-                  <span className="text-lg font-bold">{Math.floor(driver.wins * 0.8)}</span>
+                  <span className="text-lg font-bold">
+                    <span className="text-xs text-muted-foreground">(Estimated)</span> ~{Math.floor(driver.wins * 0.8)}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">Grand Prix Top 10s</span>
-                  <span className="text-lg font-bold">{Math.min(schedule?.filter(e => new Date(e.Session5Date) < new Date()).length || 0, Math.floor(driver.points / 8) + 5)}</span>
+                  <span className="text-lg font-bold">
+                    <span className="text-xs text-muted-foreground">(Calculated)</span> {Math.min(schedule?.filter(e => new Date(e.Session5Date) < new Date()).length || 0, Math.floor(driver.points / 8) + 5)}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">DHL Fastest Laps</span>
-                  <span className="text-lg font-bold">{Math.floor(driver.wins * 0.4)}</span>
+                  <span className="text-lg font-bold">
+                    <span className="text-xs text-muted-foreground">(Estimated)</span> ~{Math.floor(driver.wins * 0.4)}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">DNFs</span>
-                  <span className="text-lg font-bold text-destructive">{Math.floor(Math.random() * 3)}</span>
+                  <span className="text-lg font-bold text-destructive">
+                    <span className="text-xs text-muted-foreground">(Unavailable)</span> N/A
+                  </span>
                 </div>
               </div>
 
               <div className="pt-4 border-t border-border/50">
                 <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sprint Statistics</h4>
+                <div className="text-xs text-yellow-600 mb-2 p-2 bg-yellow-500/10 rounded">
+                  ⚠️ Sprint statistics are estimates based on current season data
+                </div>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                     <span className="text-sm font-medium text-muted-foreground">Sprint Races</span>
-                    <span className="text-lg font-bold">6</span>
+                    <span className="text-lg font-bold">
+                      <span className="text-xs text-muted-foreground">(Typical)</span> 6
+                    </span>
                   </div>
                   <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                     <span className="text-sm font-medium text-muted-foreground">Sprint Points</span>
-                    <span className="text-lg font-bold">{Math.floor(driver.points * 0.08)}</span>
+                    <span className="text-lg font-bold">
+                      <span className="text-xs text-muted-foreground">(Estimated)</span> ~{Math.floor(driver.points * 0.08)}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                     <span className="text-sm font-medium text-muted-foreground">Sprint Wins</span>
-                    <span className="text-lg font-bold">{Math.min(1, Math.floor(driver.wins * 0.3))}</span>
+                    <span className="text-lg font-bold">
+                      <span className="text-xs text-muted-foreground">(Estimated)</span> ~{Math.min(1, Math.floor(driver.wins * 0.3))}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                     <span className="text-sm font-medium text-muted-foreground">Sprint Podiums</span>
-                    <span className="text-lg font-bold">{Math.min(2, Math.floor(driver.wins * 0.5))}</span>
+                    <span className="text-lg font-bold">
+                      <span className="text-xs text-muted-foreground">(Estimated)</span> ~{Math.min(2, Math.floor(driver.wins * 0.5))}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                     <span className="text-sm font-medium text-muted-foreground">Sprint Poles</span>
-                    <span className="text-lg font-bold">{Math.min(1, Math.floor(driver.wins * 0.25))}</span>
+                    <span className="text-lg font-bold">
+                      <span className="text-xs text-muted-foreground">(Estimated)</span> ~{Math.min(1, Math.floor(driver.wins * 0.25))}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                     <span className="text-sm font-medium text-muted-foreground">Sprint Top 10s</span>
-                    <span className="text-lg font-bold">5</span>
+                    <span className="text-lg font-bold">
+                      <span className="text-xs text-muted-foreground">(Estimated)</span> ~5
+                    </span>
                   </div>
                 </div>
               </div>
@@ -850,30 +966,43 @@ const DriverProfile = () => {
                 </div>
               </div>
 
+              <div className="text-xs text-yellow-600 mb-2 p-2 bg-yellow-500/10 rounded">
+                ⚠️ Career statistics marked as "(Estimated)" are calculated approximations based on available data
+              </div>
               <div className="space-y-2">
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">Grand Prix Entered</span>
-                  <span className="text-lg font-bold">{historicalData ? historicalData.reduce((acc, h) => acc + (schedule?.length || 20), 0) : '0'}</span>
+                  <span className="text-lg font-bold">
+                    <span className="text-xs text-muted-foreground">(Estimated)</span> ~{historicalData ? historicalData.reduce((acc, h) => acc + (schedule?.length || 20), 0) : '0'}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">Career Points</span>
-                  <span className="text-lg font-bold text-primary">{historicalData ? historicalData.reduce((acc, h) => acc + h.points, 0).toFixed(1) : '0'}</span>
+                  <span className="text-lg font-bold text-primary">{historicalData ? historicalData.reduce((acc, h) => acc + h.points, 0).toFixed(1) : driver.points.toFixed(1)}</span>
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">Highest Race Finish</span>
-                  <span className="text-lg font-bold text-yellow-500">1st (x{historicalData ? historicalData.reduce((acc, h) => acc + h.wins, 0) : driver.wins})</span>
+                  <span className="text-lg font-bold text-yellow-500">
+                    {driver.wins > 0 ? '1st' : 'N/A'} (x{historicalData ? historicalData.reduce((acc, h) => acc + h.wins, 0) : driver.wins})
+                  </span>
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">Career Podiums</span>
-                  <span className="text-lg font-bold">{historicalData ? Math.floor(historicalData.reduce((acc, h) => acc + h.wins, 0) * 1.9) : Math.floor(driver.wins * 1.9)}</span>
+                  <span className="text-lg font-bold">
+                    <span className="text-xs text-muted-foreground">(Estimated)</span> ~{historicalData ? Math.floor(historicalData.reduce((acc, h) => acc + h.wins, 0) * 1.9) : Math.floor(driver.wins * 1.9)}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">Highest Grid Position</span>
-                  <span className="text-lg font-bold">1st (x{historicalData ? Math.floor(historicalData.reduce((acc, h) => acc + h.wins, 0) * 0.95) : Math.floor(driver.wins * 0.95)})</span>
+                  <span className="text-lg font-bold">
+                    <span className="text-xs text-muted-foreground">(Estimated)</span> {driver.wins > 0 ? '1st' : 'N/A'} (x{historicalData ? Math.floor(historicalData.reduce((acc, h) => acc + h.wins, 0) * 0.95) : Math.floor(driver.wins * 0.95)})
+                  </span>
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">Pole Positions</span>
-                  <span className="text-lg font-bold">{historicalData ? Math.floor(historicalData.reduce((acc, h) => acc + h.wins, 0) * 0.95) : Math.floor(driver.wins * 0.95)}</span>
+                  <span className="text-lg font-bold">
+                    <span className="text-xs text-muted-foreground">(Estimated)</span> ~{historicalData ? Math.floor(historicalData.reduce((acc, h) => acc + h.wins, 0) * 0.95) : Math.floor(driver.wins * 0.95)}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">World Championships</span>
@@ -881,7 +1010,9 @@ const DriverProfile = () => {
                 </div>
                 <div className="flex justify-between items-center p-2.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
                   <span className="text-sm font-medium text-muted-foreground">Career DNFs</span>
-                  <span className="text-lg font-bold text-destructive">{historicalData ? Math.floor(historicalData.length * 1.2) : '0'}</span>
+                  <span className="text-lg font-bold text-destructive">
+                    <span className="text-xs text-muted-foreground">(Estimated)</span> ~{historicalData ? Math.floor(historicalData.length * 1.2) : 'N/A'}
+                  </span>
                 </div>
               </div>
 
@@ -912,6 +1043,9 @@ const DriverProfile = () => {
               <CardTitle className="flex items-center gap-3 text-2xl">
                 <Trophy className="h-8 w-8 text-primary" />
                 Championship Battle Analysis
+                <Badge variant="outline" className="ml-auto">
+                  50K Simulations
+                </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -967,8 +1101,8 @@ const DriverProfile = () => {
                   <p className="text-3xl font-bold" style={{ color: `hsl(${teamColor})` }}>{championshipData.maxPossiblePoints}</p>
                 </div>
                 <div className="p-4 rounded-lg bg-muted/50 text-center">
-                  <p className="text-sm text-muted-foreground mb-1">Points Needed</p>
-                  <p className="text-3xl font-bold text-primary">{championshipData.pointsNeeded}</p>
+                  <p className="text-sm text-muted-foreground mb-1">Avg Finish Needed</p>
+                  <p className="text-3xl font-bold text-primary">P{championshipData.avgFinishNeeded.toFixed(1)}</p>
                 </div>
                 <div className="p-4 rounded-lg bg-muted/50 text-center">
                   <p className="text-sm text-muted-foreground mb-1">Drivers Ahead</p>
@@ -976,47 +1110,97 @@ const DriverProfile = () => {
                 </div>
               </div>
 
-              {/* Championship Scenario */}
-              <div className="p-4 rounded-lg bg-muted/30 border border-border">
-                <h4 className="font-semibold mb-3 flex items-center gap-2">
-                  <Award className="h-5 w-5" />
-                  Championship Scenario
-                </h4>
-                <div className="space-y-2 text-sm">
-                  {driver.position === 1 ? (
-                    <p className="text-green-500">
-                      🏆 Currently leading the championship! Needs to maintain consistency to secure the title.
-                    </p>
-                  ) : championshipData.canWin ? (
-                    <>
-                      <p>
-                        • Must gain <strong className="text-primary">{championshipData.pointsNeeded} points</strong> to overtake the leader
-                      </p>
-                      <p>
-                        • With perfect results, could reach <strong style={{ color: `hsl(${teamColor})` }}>{championshipData.maxPossiblePoints} points</strong>
-                      </p>
-                      <p>
-                        • Currently {championshipData.pointsBehindLeader} points behind with {championshipData.driversAhead} driver{championshipData.driversAhead !== 1 ? 's' : ''} ahead
-                      </p>
-                      {championshipData.winProbability > 50 ? (
-                        <p className="text-green-500">
-                          ✓ Strong title contender with {championshipData.winProbability}% probability
+              {/* Enhanced Championship Scenario */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-lg bg-muted/30 border border-border">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Award className="h-5 w-5" />
+                    Championship Path
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    {driver.position === 1 ? (
+                      <>
+                        <p className="text-green-500 font-medium">
+                          🏆 Currently leading the championship!
                         </p>
-                      ) : championshipData.winProbability > 20 ? (
-                        <p className="text-yellow-500">
-                          ⚠ Outside shot at the title - needs consistent podium finishes
+                        <p>
+                          • Needs to maintain avg P{championshipData.avgFinishNeeded.toFixed(1)} or better finishes
                         </p>
-                      ) : (
-                        <p className="text-orange-500">
-                          ⚠ Long shot - requires wins and leader to stumble significantly
+                        <p>
+                          • Can clinch with {championshipData.racesToClinch} consecutive wins
                         </p>
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-destructive">
-                      ✗ Mathematically eliminated from championship contention. Even with maximum points, cannot catch the leader.
-                    </p>
-                  )}
+                        <p>
+                          • Maximum achievable: <strong>{championshipData.maxPossiblePoints} points</strong>
+                        </p>
+                      </>
+                    ) : championshipData.canWin ? (
+                      <>
+                        <p className="text-primary font-medium">
+                          📊 Mathematically in contention
+                        </p>
+                        <p>
+                          • Must gain <strong className="text-primary">{championshipData.pointsNeeded} points</strong> to overtake leader
+                        </p>
+                        <p>
+                          • Needs avg <strong>P{championshipData.avgFinishNeeded.toFixed(1)}</strong> finishes in remaining races
+                        </p>
+                        <p>
+                          • Requires {championshipData.racesToClinch} wins minimum to have a chance
+                        </p>
+                        <p>
+                          • Currently {championshipData.pointsBehindLeader} points behind with {championshipData.driversAhead} driver{championshipData.driversAhead !== 1 ? 's' : ''} ahead
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-destructive font-medium">
+                          ✗ Mathematically eliminated from title
+                        </p>
+                        <p>
+                          • Maximum possible: {championshipData.maxPossiblePoints} points
+                        </p>
+                        <p>
+                          • Leader has {championshipData.pointsBehindLeader} point advantage
+                        </p>
+                        <p>
+                          • Focus now on securing best possible finishing position
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-lg bg-muted/30 border border-border">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Target className="h-5 w-5" />
+                    Key Statistics
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Current Position</span>
+                      <span className="font-bold">P{driver.position}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Current Points</span>
+                      <span className="font-bold">{driver.points}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Season Wins</span>
+                      <span className="font-bold">{driver.wins}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Win Rate</span>
+                      <span className="font-bold">{((driver.wins / (TOTAL_RACES - Math.floor(championshipData.maxPossiblePoints - driver.points) / 25)) * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Points per Race</span>
+                      <span className="font-bold">{(driver.points / (TOTAL_RACES - Math.floor(championshipData.maxPossiblePoints - driver.points) / 25)).toFixed(1)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-border pt-2 mt-2">
+                      <span className="text-muted-foreground font-medium">Championship Win %</span>
+                      <span className="font-bold text-primary">{championshipData.winProbability}%</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </CardContent>
