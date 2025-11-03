@@ -118,6 +118,7 @@ def to_json_serializable(df: pd.DataFrame) -> List[Dict[str, Any]]:
     - Replaces numpy.nan with None (which becomes null in JSON).
     - Converts timedelta objects to ISO format strings.
     - Handles Timestamp objects properly.
+    - Converts float to int for columns that should be integers.
     """
     if df is None or df.empty:
         return []
@@ -137,11 +138,32 @@ def to_json_serializable(df: pd.DataFrame) -> List[Dict[str, Any]]:
             lambda x: None if pd.isna(x) else x.isoformat()
         )
 
+    # Convert float columns that should be integers (like RoundNumber)
+    for col in df_copy.select_dtypes(include=['float64', 'float32']).columns:
+        # Check if all non-null values are whole numbers
+        if df_copy[col].notna().any():
+            non_null_values = df_copy[col].dropna()
+            # Use isclose for floating point comparison
+            if len(non_null_values) > 0 and all(np.isclose(non_null_values, non_null_values.astype(int))):
+                # Convert to int, preserving NaN as None
+                df_copy[col] = df_copy[col].apply(
+                    lambda x: None if pd.isna(x) else int(round(x))
+                )
+
     # Replace all NaN values with None
     df_copy = df_copy.replace({np.nan: None, pd.NaT: None})
     
-    # Convert to dict
-    return df_copy.to_dict(orient='records')
+    # Convert to dict and post-process to ensure all floats that are whole numbers are converted to ints
+    records = df_copy.to_dict(orient='records')
+    
+    # Post-processing: convert any remaining floats that are whole numbers to ints
+    for record in records:
+        for key, value in record.items():
+            if isinstance(value, float) and not pd.isna(value):
+                if value == int(value):
+                    record[key] = int(value)
+    
+    return records
 
 
 # --- Helper function for loading session data ---
